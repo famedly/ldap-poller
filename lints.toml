@@ -21,7 +21,7 @@ warn = [
     'clippy::float_cmp',
     'clippy::fn_params_excessive_bools',
     'clippy::fn_to_numeric_cast_any',
-    #'clippy::future_not_send',
+    'clippy::future_not_send',
     'clippy::if_then_some_else_none',
     'clippy::implicit_clone',
     'clippy::implicit_hasher',
