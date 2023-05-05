@@ -1,3 +1,4 @@
+//! Config for the LDAP client.
 use std::time::Duration;
 
 use ldap3::LdapConnSettings;
