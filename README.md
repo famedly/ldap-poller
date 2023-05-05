@@ -83,6 +83,26 @@ while let Some(entry) = receiver.recv().await {
 [persistent search]: https://datatracker.ietf.org/doc/html/draft-ietf-ldapext-psearch-03
 [content synchronization]: https://www.rfc-editor.org/rfc/rfc4533.html
 
+## Testing
+
+This library has two test modes: mock and integration tests. To run the mock tests without additional dependencies: 
+
+```
+cargo test
+```
+
+For the integration tests it uses a docker compose setup with a ready-to-go LDAP
+server. The setup and teardown is automated with the tool
+`cargo-make` which uses the tasks in `Makefile.toml`.
+The docker compose files are in `docker-compose/`. To run the integration tests, run the following commands:
+
+```
+cargo make start-docker-setup
+cargo test -- --ignored
+cargo make stop-docker-setup 
+```
+
+
 ## Lints
 
 We have plenty of lints in `lints.toml` that we use. Cargo currently does not natively support an extra file for lints, so we use `cargo-lints`. To check everything with our lints, run this locally:
