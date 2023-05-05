@@ -1,0 +1,19 @@
+version: '3'
+
+services:
+  openldap:
+    restart: "unless-stopped"
+    image: bitnami/openldap:latest
+    environment:
+      - LDAP_USER=admin
+    ports:
+      - 1389:1389/tcp
+
+
+networks:
+  default:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.42.0.0/16
+
