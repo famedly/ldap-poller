@@ -3,7 +3,7 @@ use std::collections::HashMap;
 
 use ldap3::SearchEntry;
 use sha2::{Digest, Sha256};
-use time::OffsetDateTime;
+use time::{OffsetDateTime, PrimitiveDateTime};
 
 use crate::{
 	config::{AttributeConfig, TIME_FORMAT},
@@ -51,7 +51,7 @@ fn has_mtime_changed(
 	attributes: &AttributeConfig,
 ) -> Result<bool, Error> {
 	let time = entry.attr_first(&attributes.updated).ok_or(Error::Missing)?;
-	let time = OffsetDateTime::parse(time, &TIME_FORMAT)?;
+	let time = PrimitiveDateTime::parse(time, &TIME_FORMAT)?.assume_utc();
 	match times.get_mut(&entry.dn) {
 		Some(cached) if time > *cached => {
 			*cached = time;

@@ -34,13 +34,14 @@
 //!     searches: Searches {
 //!         user_base: "ou=people,dc=example,dc=com".to_owned(),
 //!         user_filter: "(objectClass=inetOrgPerson)".to_owned(),
+//!         page_size: None,
 //!     },
 //!     attributes: AttributeConfig {
 //!         pid: "objectGUID".to_owned(),
 //!         updated: "mtime".to_owned(),
 //!         name: "cn".to_owned(),
 //!         admin: "admin".to_owned(),
-//!         deactivated: "deactivated".to_owned(),
+//!         enabled: "enabled".to_owned(),
 //!     },
 //!     cache_method: CacheMethod::ModificationTime,
 //! };

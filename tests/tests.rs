@@ -31,7 +31,7 @@ async fn ldap_user_first_sync_test() {
 			page_size: None,
 		},
 		attributes: AttributeConfig {
-			pid: "entryUUID".to_owned(),
+			pid: "uid".to_owned(),
 			updated: "modifyTimestamp".to_owned(),
 			name: "cn".to_owned(),
 			admin: "admin".to_owned(),
@@ -41,15 +41,21 @@ async fn ldap_user_first_sync_test() {
 	};
 
 	let (mut client, mut receiver) = Ldap::new(config.clone());
-	tokio::spawn(async move {
-		client.sync().await.unwrap();
+	let _handle = tokio::spawn(async move {
+		client.sync_once().await.unwrap();
 	});
-	while let Some(entry) = receiver.recv().await {
-		// println!("Received entry: {entry:#?}");
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		// println!("Parsed entry as: {user:#?}");
 
-		assert_eq!(user.name, Some("skarl".to_owned()));
-		assert_eq!(user.admin, Some(true));
+	let mut users = vec![];
+
+	while let Some(entry) = receiver.recv().await {
+		println!("Received entry: {entry:#?}");
+		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+		println!("Parsed entry as: {user:#?}");
+
+		users.push(user);
 	}
+
+	assert_eq!(users[0].name.as_ref().unwrap(), "User1");
+	assert_eq!(users[1].name.as_ref().unwrap(), "User2");
+	assert_eq!(users.len(), 2);
 }

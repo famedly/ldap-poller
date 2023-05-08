@@ -3,18 +3,14 @@ use std::time::Duration;
 
 use ldap3::LdapConnSettings;
 use serde::{Deserialize, Serialize};
-use time::format_description::well_known::{iso8601, Iso8601};
 use url::Url;
 
 /// Configuration for which variant of ISO8601 to use for parsing and
 /// serializing time. Configured according the syntax definition
 /// `( 1.3.6.1.4.1.1466.115.121.1.24 DESC 'Generalized Time' )` described in
 /// RFC4517 section 3.1.13
-pub const TIME_CONFIG: iso8601::EncodedConfig =
-	iso8601::Config::DEFAULT.set_use_separators(false).encode();
-/// The time format used to parse and format timestamps in attribute values. See
-/// also [`TIME_CONFIG`]
-pub const TIME_FORMAT: Iso8601<TIME_CONFIG> = Iso8601;
+pub const TIME_FORMAT: &[time::format_description::FormatItem] =
+	time::macros::format_description!("[year][month][day][hour][minute][second]Z");
 
 /// LDAP configuration.
 #[derive(Deserialize, Serialize, Clone, Debug)]
@@ -74,8 +70,8 @@ pub struct AttributeConfig {
 impl AttributeConfig {
 	/// Returns the list of LDAP object attributes the server should return.
 	#[must_use]
-	pub fn as_list(&self) -> [&str; 5] {
-		["dn", &self.updated, &self.name, &self.admin, &self.enabled]
+	pub fn as_list(&self) -> [&str; 6] {
+		["dn", &self.pid, &self.updated, &self.name, &self.admin, &self.enabled]
 	}
 
 	/// Construct a sample value of this structure suitable for tests
@@ -135,5 +131,21 @@ impl ConnectionConfig {
 		}
 		// TODO: Option for native platform TLS certs when using rustls
 		settings
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	#![allow(clippy::unwrap_used, clippy::items_after_statements)]
+
+	use time::PrimitiveDateTime;
+
+	use super::TIME_FORMAT;
+
+	#[test]
+	fn test_time_config() -> Result<(), Box<dyn std::error::Error>> {
+		PrimitiveDateTime::parse("20130516200520Z", &TIME_FORMAT)?;
+
+		Ok(())
 	}
 }
