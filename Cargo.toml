@@ -18,3 +18,4 @@ url = { version = "2.3.1", features = ["serde"] }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+serial_test = "2"

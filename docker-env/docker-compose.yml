@@ -5,7 +5,8 @@ services:
     restart: "unless-stopped"
     image: bitnami/openldap:latest
     environment:
-      - LDAP_USER=admin
+      - LDAP_ADMIN_USERNAME=admin
+      - LDAP_ADMIN_PASSWORD=adminpassword
     ports:
       - 1389:1389/tcp
 
