@@ -70,6 +70,21 @@ pub async fn ldap_user_add_attribute(
 	Ok(())
 }
 
+pub async fn ldap_user_replace_attribute(
+	ldap: &mut ldap3::Ldap,
+	cn: &str,
+	attribute: &str,
+	value: &str,
+) -> Result<(), Box<dyn Error>> {
+	ldap.modify(
+		&format!("cn={},ou=users,dc=example,dc=org", cn),
+		vec![ldap3::Mod::Replace(attribute, [value].into())],
+	)
+	.await?
+	.success()?;
+	Ok(())
+}
+
 pub async fn ldap_search_user(
 	ldap: &mut ldap3::Ldap,
 	cn: &str,
