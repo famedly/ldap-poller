@@ -7,7 +7,7 @@
 	clippy::unwrap_used
 )]
 
-use std::error::Error;
+use std::{error::Error, time::Duration};
 
 use ldap3::SearchEntry;
 use ldap_poller::{
@@ -55,9 +55,9 @@ pub fn setup_ldap_poller(
 
 	let handle = tokio::spawn(async move {
 		if sync_once {
-			client.sync_once().await.unwrap();
+			client.sync_once(None).await.unwrap();
 		} else {
-			client.sync().await.unwrap();
+			client.sync(Duration::from_secs(1), None).await.unwrap();
 		}
 	});
 
@@ -167,7 +167,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 		users.push(user);
 	}
 
-	tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+	tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
 	assert_eq!(users.len(), 1);
 	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");

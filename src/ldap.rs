@@ -6,6 +6,7 @@ use ldap3::{
 	adapters::{Adapter, EntriesOnly, PagedResults},
 	LdapConnAsync, Scope, SearchEntry,
 };
+use time::OffsetDateTime;
 use tokio::sync::mpsc;
 use tracing::{error, warn};
 
@@ -75,17 +76,24 @@ impl Ldap {
 	}
 
 	/// Perform a sync repeatedly forever
-	pub async fn sync(&mut self) -> Result<(), Error> {
+	pub async fn sync(
+		&mut self,
+		duration_between_searches: std::time::Duration,
+		mut last_sync_time: Option<OffsetDateTime>,
+	) -> Result<(), Error> {
 		loop {
-			if let Err(e) = self.sync_once().await {
-				tracing::error!("{e}");
+			let new_time = OffsetDateTime::now_utc();
+			if let Err(e) = self.sync_once(last_sync_time).await {
+				tracing::error!("after_sync: {e}");
 			}
+			last_sync_time = Some(new_time);
+			tokio::time::sleep(duration_between_searches).await;
 		}
 	}
 
 	/// Perform a search of all available users, pushing any entries which have
 	/// changed
-	pub async fn sync_once(&mut self) -> Result<(), Error> {
+	pub async fn sync_once(&mut self, last_sync_time: Option<OffsetDateTime>) -> Result<(), Error> {
 		// TODO: more LDAP server configurations.
 		let (conn, mut ldap) = self.connect().await?;
 		let conn = tokio::spawn(async move {
@@ -102,12 +110,23 @@ impl Ldap {
 			adapters.push(Box::new(PagedResults::new(page_size)));
 		}
 		let attributes = self.config.attributes.clone();
+		let filter = if let Some(last_sync_time) = last_sync_time {
+			format!(
+				"(&{}({}>={}))",
+				self.config.searches.user_filter,
+				self.config.attributes.updated,
+				last_sync_time.format(&crate::config::TIME_FORMAT).map_err(|_| Error::Invalid)?,
+			)
+		} else {
+			self.config.searches.user_filter.clone()
+		};
+
 		let mut search = ldap
 			.streaming_search_with(
 				adapters,
 				&self.config.searches.user_base,
 				Scope::Subtree,
-				&self.config.searches.user_filter,
+				&filter,
 				attributes.as_list(),
 			)
 			.await?;
@@ -117,6 +136,7 @@ impl Ldap {
 			if !self.cache.has_changed(&entry, &self.config.attributes) {
 				continue;
 			}
+
 			if let Err(e) = self.sender.send(entry).await {
 				error!("Sending update failed: {e}");
 			}
