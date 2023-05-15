@@ -48,7 +48,7 @@
 //!
 //! let (mut client, mut receiver) = Ldap::new(config.clone());
 //! tokio::spawn(async move {
-//!     client.sync().await;
+//!     client.sync(std::time::Duration::from_secs(5), None).await;
 //! });
 //! while let Some(entry) = receiver.recv().await {
 //!     println!("Received entry: {entry:#?}");

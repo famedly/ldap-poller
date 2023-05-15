@@ -36,8 +36,8 @@ pub struct UserEntry {
 	pub name: Option<String>,
 	/// Whether the user has administrator rights.
 	pub admin: Option<bool>,
-	/// Whether the user has been deactivated.
-	pub deactivated: Option<bool>,
+	/// Whether the user has been enabled.
+	pub enabled: Option<bool>,
 }
 
 impl UserEntry {
@@ -47,8 +47,8 @@ impl UserEntry {
 		let pid = entry.bin_attr_first(&attributes.pid).ok_or(Error::Missing)?.to_owned();
 		let name = entry.attr_first(&attributes.name).map(String::from);
 		let admin = entry.bool_first(&attributes.admin).transpose()?;
-		let deactivated = entry.bool_first(&attributes.enabled).transpose()?;
-		Ok(Self { pid, name, admin, deactivated })
+		let enabled = entry.bool_first(&attributes.enabled).transpose()?;
+		Ok(Self { pid, name, admin, enabled })
 	}
 }
 

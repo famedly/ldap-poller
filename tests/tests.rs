@@ -4,9 +4,9 @@
 	clippy::missing_docs_in_private_items,
 	clippy::print_stderr,
 	clippy::print_stdout,
-	clippy::unwrap_used
+	clippy::unwrap_used,
+	clippy::bool_assert_comparison
 )]
-
 use std::{error::Error, time::Duration};
 
 use ldap3::SearchEntry;
@@ -46,7 +46,7 @@ pub fn setup_ldap_poller(
 			updated: "modifyTimestamp".to_owned(),
 			name: "displayName".to_owned(),
 			admin: "admin".to_owned(),
-			enabled: "enabled".to_owned(),
+			enabled: "employeeType".to_owned(),
 		},
 		cache_method: CacheMethod::ModificationTime,
 	};
@@ -182,6 +182,30 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	assert_eq!(users.len(), 2);
 	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
 	assert_eq!(users[1].name.as_ref().unwrap(), "MyNameNew");
+
+	tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+	ldap_user_add_attribute(&mut ldap, "user01", "employeeType", "FALSE").await?;
+
+	if let Some(entry) = receiver.recv().await {
+		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+		users.push(user);
+	}
+
+	assert_eq!(users.len(), 3);
+	assert_eq!(users[2].enabled.unwrap(), false);
+
+	tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+
+	ldap_user_replace_attribute(&mut ldap, "user01", "employeeType", "TRUE").await?;
+
+	if let Some(entry) = receiver.recv().await {
+		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+		users.push(user);
+	}
+
+	assert_eq!(users.len(), 4);
+	assert_eq!(users[3].enabled.unwrap(), true);
 
 	ldap_delete_user(&mut ldap, "user01").await?;
 	ldap_delete_organizational_unit(&mut ldap, "users").await?;
