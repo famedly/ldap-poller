@@ -46,9 +46,9 @@
 //!     cache_method: CacheMethod::ModificationTime,
 //! };
 //!
-//! let (mut client, mut receiver) = Ldap::new(config.clone());
+//! let (mut client, mut receiver) = Ldap::new(config.clone(), None);
 //! tokio::spawn(async move {
-//!     client.sync(std::time::Duration::from_secs(5), None).await;
+//!     client.sync(std::time::Duration::from_secs(5)).await;
 //! });
 //! while let Some(entry) = receiver.recv().await {
 //!     println!("Received entry: {entry:#?}");
