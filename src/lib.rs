@@ -84,5 +84,5 @@ pub use ldap3::{self, SearchEntry};
 pub use crate::{
 	config::{AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches},
 	entry::SearchEntryExt,
-	ldap::{Ldap, UserEntry},
+	ldap::{Cache, Ldap, UserEntry},
 };

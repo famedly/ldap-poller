@@ -10,9 +10,18 @@ use crate::{
 	entry::SearchEntryExt,
 };
 
-/// Cache data used to check whether an entry has changed
-#[derive(Debug, Clone)]
-pub(crate) enum Cache {
+/// Cache data with information about the last sync and user entries
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct Cache {
+	/// The time of the last sync
+	pub(crate) last_sync_time: Option<OffsetDateTime>,
+	/// Cached data entries used to check whether an entry has changed
+	pub(crate) entries: CacheEntries,
+}
+
+/// Cache data entries used to check whether an entry has changed
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub enum CacheEntries {
 	/// Store a hash of the relevant attribute values to check whether a user
 	/// entry has changed.
 	Hash(HashMap<String, Vec<u8>>),
@@ -23,7 +32,7 @@ pub(crate) enum Cache {
 	None,
 }
 
-impl Cache {
+impl CacheEntries {
 	/// Check's whether a user's data has changed
 	pub(crate) fn has_changed(
 		&mut self,
@@ -31,15 +40,17 @@ impl Cache {
 		attributes: &AttributeConfig,
 	) -> bool {
 		match *self {
-			Cache::Hash(ref mut cache) => has_hash_changed(cache, entry),
-			Cache::Modified(ref mut cache) => match has_mtime_changed(cache, entry, attributes) {
-				Ok(has_changed) => has_changed,
-				Err(err) => {
-					tracing::warn!("Validating modification time failed: {err}");
-					true
+			CacheEntries::Hash(ref mut cache) => has_hash_changed(cache, entry),
+			CacheEntries::Modified(ref mut cache) => {
+				match has_mtime_changed(cache, entry, attributes) {
+					Ok(has_changed) => has_changed,
+					Err(err) => {
+						tracing::warn!("Validating modification time failed: {err}");
+						true
+					}
 				}
-			},
-			Cache::None => true,
+			}
+			CacheEntries::None => true,
 		}
 	}
 }

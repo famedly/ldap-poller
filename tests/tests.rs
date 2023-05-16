@@ -30,7 +30,8 @@ use crate::common::ldap_user_replace_attribute;
 #[must_use]
 pub fn setup_ldap_poller(
 	sync_once: bool,
-) -> (Config, tokio::sync::mpsc::Receiver<SearchEntry>, tokio::task::JoinHandle<()>) {
+	cache: Option<ldap_poller::Cache>,
+) -> (Ldap, Config, tokio::sync::mpsc::Receiver<SearchEntry>, tokio::task::JoinHandle<()>) {
 	let config = Config {
 		url: Url::parse("ldap://localhost:1389").unwrap(),
 		connection: ConnectionConfig::default(),
@@ -51,17 +52,18 @@ pub fn setup_ldap_poller(
 		cache_method: CacheMethod::ModificationTime,
 	};
 
-	let (mut client, receiver) = Ldap::new(config.clone());
+	let (client, receiver) = Ldap::new(config.clone(), cache);
+	let mut client_clone = client.clone();
 
 	let handle = tokio::spawn(async move {
 		if sync_once {
-			client.sync_once(None).await.unwrap();
+			client_clone.sync_once(None).await.unwrap();
 		} else {
-			client.sync(Duration::from_secs(1), None).await.unwrap();
+			client_clone.sync(Duration::from_secs(1)).await.unwrap();
 		}
 	});
 
-	(config, receiver, handle)
+	(client, config, receiver, handle)
 }
 
 #[ignore = "docker"]
@@ -82,12 +84,15 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user03", "User3").await?;
 	ldap_user_add_attribute(&mut ldap, "user03", "displayName", "MyName3").await?;
 
-	let (config, mut receiver, handle) = setup_ldap_poller(true);
+	let (_ldap_poller, config, mut receiver, handle) = setup_ldap_poller(true, None);
 
 	let mut users = vec![];
 	while let Some(entry) = receiver.recv().await {
 		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
 		users.push(user);
+		if users.len() == 3 {
+			break;
+		}
 	}
 
 	assert_eq!(users.len(), 3);
@@ -116,7 +121,7 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user01", "User1").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
-	let (config, mut receiver, handle) = setup_ldap_poller(false);
+	let (_ldap_poller, config, mut receiver, handle) = setup_ldap_poller(false, None);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
@@ -159,7 +164,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user01", "User1").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
-	let (config, mut receiver, handle) = setup_ldap_poller(false);
+	let (_ldap_poller, config, mut receiver, handle) = setup_ldap_poller(false, None);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
@@ -208,6 +213,54 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	assert_eq!(users[3].enabled.unwrap(), true);
 
 	ldap_delete_user(&mut ldap, "user01").await?;
+	ldap_delete_organizational_unit(&mut ldap, "users").await?;
+	ldap.unbind().await?;
+	handle.abort();
+
+	Ok(())
+}
+
+#[ignore = "docker"]
+#[tokio::test]
+#[serial]
+async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
+	let mut ldap = ldap_connect().await?;
+	let _ = ldap_delete_organizational_unit(&mut ldap, "users").await;
+
+	ldap_add_organizational_unit(&mut ldap, "users").await.unwrap();
+	ldap_add_user(&mut ldap, "user01", "User1").await.unwrap();
+	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
+
+	let (ldap_poller, config, mut receiver, handle) = setup_ldap_poller(false, None);
+
+	let mut users = vec![];
+	if let Some(entry) = receiver.recv().await {
+		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+		users.push(user);
+	}
+
+	assert_eq!(users.len(), 1);
+	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
+
+	let cache = ldap_poller.persist_cache().await.unwrap();
+	handle.abort();
+
+	ldap_add_user(&mut ldap, "user02", "User2").await.unwrap();
+	ldap_user_add_attribute(&mut ldap, "user02", "displayName", "MyName2").await?;
+
+	let (_ldap_poller, config, mut receiver, handle) = setup_ldap_poller(false, Some(cache));
+
+	if let Some(entry) = receiver.recv().await {
+		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+		users.push(user);
+	}
+
+	assert_eq!(users.len(), 2);
+	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
+	assert_eq!(users[1].name.as_ref().unwrap(), "MyName2");
+
+	ldap_delete_user(&mut ldap, "user01").await?;
+	ldap_delete_user(&mut ldap, "user02").await?;
 	ldap_delete_organizational_unit(&mut ldap, "users").await?;
 	ldap.unbind().await?;
 	handle.abort();

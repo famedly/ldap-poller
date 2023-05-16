@@ -1,17 +1,18 @@
 //! Client for connecting to LDAP and syncing entries
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use ldap3::{
 	adapters::{Adapter, EntriesOnly, PagedResults},
 	LdapConnAsync, Scope, SearchEntry,
 };
 use time::OffsetDateTime;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, RwLock};
 use tracing::{error, warn};
 
+pub use crate::cache::Cache;
 use crate::{
-	cache::Cache,
+	cache::CacheEntries,
 	config::{AttributeConfig, CacheMethod, Config},
 	entry::SearchEntryExt,
 };
@@ -24,7 +25,7 @@ pub struct Ldap {
 	/// The sender half of the channel where changes to user data are pushed.
 	sender: mpsc::Sender<SearchEntry>,
 	/// Data for the cache
-	cache: Cache,
+	cache: Arc<RwLock<Cache>>,
 }
 
 /// Data about a user
@@ -53,17 +54,23 @@ impl UserEntry {
 }
 
 impl Ldap {
-	/// Create a new [`Ldap`] with the given configuration. Also returns a
-	/// channel receiver which will be used to push updates to user data.
+	/// Create a new [`Ldap`] with the given configuration and optional saved
+	/// cache. Also returns a channel receiver which will be used to push
+	/// updates to user data.
 	#[must_use]
-	pub fn new(config: Config) -> (Self, mpsc::Receiver<SearchEntry>) {
+	pub fn new(config: Config, cache: Option<Cache>) -> (Self, mpsc::Receiver<SearchEntry>) {
 		let (sender, receiver) = mpsc::channel::<SearchEntry>(1024);
-		let cache = match config.cache_method {
-			CacheMethod::Hash => Cache::Hash(HashMap::new()),
-			CacheMethod::ModificationTime => Cache::Modified(HashMap::new()),
-			CacheMethod::Disabled => Cache::None,
+		let cache: Cache = if let Some(cache) = cache {
+			cache
+		} else {
+			let cache_entries = match config.cache_method {
+				CacheMethod::Hash => CacheEntries::Hash(HashMap::new()),
+				CacheMethod::ModificationTime => CacheEntries::Modified(HashMap::new()),
+				CacheMethod::Disabled => CacheEntries::None,
+			};
+			Cache { last_sync_time: None, entries: cache_entries }
 		};
-		(Ldap { config, sender, cache }, receiver)
+		(Ldap { config, sender, cache: Arc::new(RwLock::new(cache)) }, receiver)
 	}
 
 	/// Create a connection to an ldap server based on the settings and url
@@ -79,14 +86,14 @@ impl Ldap {
 	pub async fn sync(
 		&mut self,
 		duration_between_searches: std::time::Duration,
-		mut last_sync_time: Option<OffsetDateTime>,
 	) -> Result<(), Error> {
 		loop {
 			let new_time = OffsetDateTime::now_utc();
-			if let Err(e) = self.sync_once(last_sync_time).await {
+			let last_time = self.cache.read().await.last_sync_time;
+			if let Err(e) = self.sync_once(last_time).await {
 				tracing::error!("after_sync: {e}");
 			}
-			last_sync_time = Some(new_time);
+			self.cache.write().await.last_sync_time = Some(new_time);
 			tokio::time::sleep(duration_between_searches).await;
 		}
 	}
@@ -133,7 +140,7 @@ impl Ldap {
 
 		// Perform the search
 		while let Some(entry) = search.next().await?.map(SearchEntry::construct) {
-			if !self.cache.has_changed(&entry, &self.config.attributes) {
+			if !self.cache.write().await.entries.has_changed(&entry, &self.config.attributes) {
 				continue;
 			}
 
@@ -149,6 +156,11 @@ impl Ldap {
 		}
 
 		Ok(())
+	}
+
+	/// Persist the cache
+	pub async fn persist_cache(&self) -> Result<Cache, Error> {
+		Ok(self.cache.read().await.clone())
 	}
 }
 
