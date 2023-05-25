@@ -30,11 +30,13 @@ visually oriented and goes into more detail about searching
 ## Getting started
 A minimal example of running the client might look like so:
 ```rust
-use url::Url;
 use ldap_poller::{
-    config::{Config, ConnectionConfig, Searches, AttributeConfig, CacheMethod},
+    config::{
+        AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches,
+    },
     ldap::{Ldap, UserEntry},
 };
+use url::Url;
 
 // Configuration can also be deserialized with serde. It's hand-constructed
 // here for demonstration purposes.
