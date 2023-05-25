@@ -21,7 +21,7 @@ use crate::{
 #[derive(Debug, Clone)]
 pub struct Ldap {
 	/// The configuration of the LDAP client.
-	config: Config,
+	config: Arc<Config>,
 	/// The sender half of the channel where changes to user data are pushed.
 	sender: mpsc::Sender<SearchEntry>,
 	/// Data for the cache
@@ -70,7 +70,7 @@ impl Ldap {
 			};
 			Cache { last_sync_time: None, entries: cache_entries }
 		};
-		(Ldap { config, sender, cache: Arc::new(RwLock::new(cache)) }, receiver)
+		(Ldap { config: Arc::new(config), sender, cache: Arc::new(RwLock::new(cache)) }, receiver)
 	}
 
 	/// Create a connection to an ldap server based on the settings and url
