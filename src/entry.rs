@@ -1,7 +1,7 @@
 //! Helper methods for extracting data from search results.
 use ldap3::SearchEntry;
 
-use crate::ldap::Error;
+use crate::error::Error;
 
 /// An extension trait for [`SearchEntry`] that provides convenience methods for
 /// extracting data.
