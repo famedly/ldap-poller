@@ -10,11 +10,3 @@ services:
     ports:
       - 1389:1389/tcp
 
-
-networks:
-  default:
-    ipam:
-      driver: default
-      config:
-        - subnet: 172.42.0.0/16
-
