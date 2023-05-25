@@ -76,8 +76,8 @@ fn has_mtime_changed(
 	}
 }
 
-/// Check whether the hash of a search entry's contents has changed
-fn has_hash_changed(hashes: &mut HashMap<String, Vec<u8>>, entry: &SearchEntry) -> bool {
+/// Get a hash of of a search entry
+fn get_hash_for_entry(entry: &SearchEntry) -> Vec<u8> {
 	let mut hasher = Sha256::new();
 	for attribute in entry.attrs.keys().chain(entry.bin_attrs.keys()) {
 		// Guard against collisions
@@ -97,7 +97,12 @@ fn has_hash_changed(hashes: &mut HashMap<String, Vec<u8>>, entry: &SearchEntry) 
 			}
 		}
 	}
-	let new_hash = hasher.finalize().to_vec();
+	hasher.finalize().to_vec()
+}
+
+/// Check whether the hash of a search entry's contents has changed
+fn has_hash_changed(hashes: &mut HashMap<String, Vec<u8>>, entry: &SearchEntry) -> bool {
+	let new_hash = get_hash_for_entry(entry);
 	match hashes.get_mut(&entry.dn) {
 		// Unchanged entry
 		Some(old_hash) if old_hash == &new_hash => false,
