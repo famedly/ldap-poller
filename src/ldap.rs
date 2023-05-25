@@ -111,7 +111,7 @@ impl Ldap {
 
 		ldap.simple_bind(&self.config.search_user, &self.config.search_password).await?;
 
-		// Prapare search parameters
+		// Prepare search parameters
 		let mut adapters: Vec<Box<dyn Adapter<_, _>>> = vec![Box::new(EntriesOnly::new())];
 		if let Some(page_size) = self.config.searches.page_size {
 			adapters.push(Box::new(PagedResults::new(page_size)));
