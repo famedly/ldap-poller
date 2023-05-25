@@ -1,0 +1,36 @@
+[tasks.format]
+toolchain = "nightly"
+command = "cargo"
+args = ["fmt"]
+
+[tasks.build]
+command = "cargo"
+args = ["build"]
+
+[tasks.test]
+command = "cargo"
+args = ["test"]
+
+[tasks.default]
+dependencies = ["format", "build", "test"]
+
+[tasks.create-and-start-containers]
+command = "docker"
+args = ["compose", "-f", "docker-env/docker-compose.yml", "up", "-d"]
+
+[tasks.stop-and-remove-containers]
+command = "docker"
+args = ["compose", "-f", "docker-env/docker-compose.yml", "down", "-v"]
+
+[tasks.build-containers]
+command = "docker"
+args = ["compose", "-f", "docker-env/docker-compose.yml", "build"]
+
+[tasks.start-docker-setup]
+dependencies = ["build-containers", "create-and-start-containers"]
+
+[tasks.stop-docker-setup]
+dependencies = ["stop-and-remove-containers"]
+
+[tasks.integration-test]
+dependencies = ["start-docker-setup", "default", "stop-docker-setup"]

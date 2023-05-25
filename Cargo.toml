@@ -1,9 +1,21 @@
 [package]
-name = "project-name"
+name = "ldap-poller"
 version = "0.1.0"
-authors = []
+authors = ["Amanda Graven <a.graven@famedly.com>"]
 edition = "2021"
-resolver = "2"
-publish = ["famedly"]
 
 [dependencies]
+ldap3 = { version = "0.11.1", default-features = false, features = [
+    "tls-rustls",
+] }
+serde = { version = "1.0.162", features = ["derive"] }
+sha2 = "0.10.6"
+thiserror = "1.0.40"
+time = { version = "0.3.21", features = ["parsing", "serde"] }
+tokio = { version = "1.28.0", features = ["full"] }
+tracing = "0.1.37"
+url = { version = "2.3.1", features = ["serde"] }
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+serial_test = "2"
