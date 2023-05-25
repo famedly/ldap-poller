@@ -19,43 +19,43 @@
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
 //! use ldap_poller::{
-//!     config::{
-//!         AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches,
-//!     },
-//!     ldap::{Ldap, UserEntry},
+//! 	config::{
+//! 		AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches,
+//! 	},
+//! 	ldap::{Ldap, UserEntry},
 //! };
 //! use url::Url;
 //!
 //! // Configuration can also be deserialized with serde. It's hand-constructed
 //! // here for demonstration purposes.
 //! let config = Config {
-//!     url: Url::parse("ldap://localhost")?,
-//!     connection: ConnectionConfig::default(),
-//!     search_user: "admin".to_owned(),
-//!     search_password: "verysecret".to_owned(),
-//!     searches: Searches {
-//!         user_base: "ou=people,dc=example,dc=com".to_owned(),
-//!         user_filter: "(objectClass=inetOrgPerson)".to_owned(),
-//!         page_size: None,
-//!     },
-//!     attributes: AttributeConfig {
-//!         pid: "objectGUID".to_owned(),
-//!         updated: "mtime".to_owned(),
-//!         name: "cn".to_owned(),
-//!         admin: "admin".to_owned(),
-//!         enabled: "enabled".to_owned(),
-//!     },
-//!     cache_method: CacheMethod::ModificationTime,
+//! 	url: Url::parse("ldap://localhost")?,
+//! 	connection: ConnectionConfig::default(),
+//! 	search_user: "admin".to_owned(),
+//! 	search_password: "verysecret".to_owned(),
+//! 	searches: Searches {
+//! 		user_base: "ou=people,dc=example,dc=com".to_owned(),
+//! 		user_filter: "(objectClass=inetOrgPerson)".to_owned(),
+//! 		page_size: None,
+//! 	},
+//! 	attributes: AttributeConfig {
+//! 		pid: "objectGUID".to_owned(),
+//! 		updated: "mtime".to_owned(),
+//! 		name: "cn".to_owned(),
+//! 		admin: "admin".to_owned(),
+//! 		enabled: "enabled".to_owned(),
+//! 	},
+//! 	cache_method: CacheMethod::ModificationTime,
 //! };
 //!
 //! let (mut client, mut receiver) = Ldap::new(config.clone(), None);
 //! tokio::spawn(async move {
-//!     client.sync(std::time::Duration::from_secs(5)).await;
+//! 	client.sync(std::time::Duration::from_secs(5)).await;
 //! });
 //! while let Some(entry) = receiver.recv().await {
-//!     println!("Received entry: {entry:#?}");
-//!     let user = UserEntry::from_search(entry, &config.attributes)?;
-//!     println!("Parsed entry as: {user:#?}");
+//! 	println!("Received entry: {entry:#?}");
+//! 	let user = UserEntry::from_search(entry, &config.attributes)?;
+//! 	println!("Parsed entry as: {user:#?}");
 //! }
 //!
 //! # Ok(())
