@@ -1,6 +1,9 @@
 //! Client for connecting to LDAP and syncing entries
 
-use std::{collections::HashMap, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	sync::Arc,
+};
 
 use ldap3::{
 	adapters::{Adapter, EntriesOnly, PagedResults},
@@ -12,7 +15,7 @@ use tracing::{error, warn};
 
 pub use crate::cache::Cache;
 use crate::{
-	cache::CacheEntries,
+	cache::{CacheEntries, CacheEntryStatus},
 	config::{AttributeConfig, CacheMethod, Config},
 	entry::SearchEntryExt,
 	error::Error,
@@ -24,9 +27,20 @@ pub struct Ldap {
 	/// The configuration of the LDAP client.
 	config: Arc<Config>,
 	/// The sender half of the channel where changes to user data are pushed.
-	sender: mpsc::Sender<SearchEntry>,
+	sender: mpsc::Sender<EntryStatus>,
 	/// Data for the cache
 	cache: Arc<RwLock<Cache>>,
+}
+
+/// Possible status of an entry
+#[derive(Debug, Clone)]
+pub enum EntryStatus {
+	/// The entry is new
+	New(SearchEntry),
+	/// The entry has changed
+	Changed(SearchEntry),
+	/// The entry was removed
+	Removed(String),
 }
 
 /// Data about a user
@@ -59,8 +73,8 @@ impl Ldap {
 	/// cache. Also returns a channel receiver which will be used to push
 	/// updates to user data.
 	#[must_use]
-	pub fn new(config: Config, cache: Option<Cache>) -> (Self, mpsc::Receiver<SearchEntry>) {
-		let (sender, receiver) = mpsc::channel::<SearchEntry>(1024);
+	pub fn new(config: Config, cache: Option<Cache>) -> (Self, mpsc::Receiver<EntryStatus>) {
+		let (sender, receiver) = mpsc::channel::<EntryStatus>(1024);
 		let cache: Cache = if let Some(cache) = cache {
 			cache
 		} else {
@@ -68,7 +82,7 @@ impl Ldap {
 				CacheMethod::ModificationTime => CacheEntries::Modified(HashMap::new()),
 				CacheMethod::Disabled => CacheEntries::None,
 			};
-			Cache { last_sync_time: None, entries: cache_entries }
+			Cache { last_sync_time: None, entries: cache_entries, missing: HashSet::new() }
 		};
 		(Ldap { config: Arc::new(config), sender, cache: Arc::new(RwLock::new(cache)) }, receiver)
 	}
@@ -100,7 +114,10 @@ impl Ldap {
 
 	/// Perform a search of all available users, pushing any entries which have
 	/// changed
-	pub async fn sync_once(&mut self, last_sync_time: Option<OffsetDateTime>) -> Result<(), Error> {
+	pub async fn sync_once(
+		&mut self,
+		_last_sync_time: Option<OffsetDateTime>,
+	) -> Result<(), Error> {
 		// TODO: more LDAP server configurations.
 		let (conn, mut ldap) = self.connect().await?;
 		let conn = tokio::spawn(async move {
@@ -117,16 +134,16 @@ impl Ldap {
 			adapters.push(Box::new(PagedResults::new(page_size)));
 		}
 		let attributes = self.config.attributes.clone();
-		let filter = if let Some(last_sync_time) = last_sync_time {
-			format!(
-				"(&{}({}>={}))",
-				self.config.searches.user_filter,
-				self.config.attributes.updated,
-				last_sync_time.format(&crate::config::TIME_FORMAT).map_err(|_| Error::Invalid)?,
-			)
-		} else {
-			self.config.searches.user_filter.clone()
-		};
+		// let filter = if let Some(last_sync_time) = last_sync_time {
+		// 	format!(
+		// 		"(&{}({}>={}))",
+		// 		self.config.searches.user_filter,
+		// 		self.config.attributes.updated,
+		// 		last_sync_time.format(&crate::config::TIME_FORMAT).map_err(|_|
+		// Error::Invalid)?, 	)
+		// } else {
+		let filter = self.config.searches.user_filter.clone();
+		// };
 
 		let mut search = ldap
 			.streaming_search_with(
@@ -138,17 +155,32 @@ impl Ldap {
 			)
 			.await?;
 
+		self.cache.write().await.start_comparison();
+
 		// Perform the search
 		while let Some(entry) = search.next().await?.map(SearchEntry::construct) {
-			if !self.cache.write().await.entries.has_changed(&entry, &self.config.attributes) {
-				continue;
-			}
-
-			if let Err(e) = self.sender.send(entry).await {
-				error!("Sending update failed: {e}");
+			let status = self.cache.write().await.check_entry(&entry, &self.config.attributes);
+			match status {
+				Ok(CacheEntryStatus::Missing) => {
+					self.send_channel_update(EntryStatus::New(entry)).await;
+				}
+				Ok(CacheEntryStatus::Unchanged) => continue,
+				Ok(CacheEntryStatus::Changed) => {
+					self.send_channel_update(EntryStatus::Changed(entry)).await;
+				}
+				Err(err) => {
+					error!("Validating cache entry failed: {err}");
+					continue;
+				}
 			}
 		}
 		search.finish().await.success()?;
+
+		let missing = self.cache.write().await.end_comparison_and_return_missing_entries().clone();
+		for id in missing {
+			self.send_channel_update(EntryStatus::Removed(id.clone())).await;
+		}
+
 		ldap.unbind().await?;
 
 		if let Err(err) = conn.await {
@@ -156,6 +188,13 @@ impl Ldap {
 		}
 
 		Ok(())
+	}
+
+	/// Helper function to send an update to the user data channel
+	async fn send_channel_update(&mut self, status: EntryStatus) {
+		if let Err(e) = self.sender.send(status).await {
+			error!("Sending update failed: {e}");
+		}
 	}
 
 	/// Persist the cache

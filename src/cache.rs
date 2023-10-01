@@ -1,5 +1,5 @@
 //! Caching mechanisms to check whether user data has changed
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ldap3::SearchEntry;
 use time::{OffsetDateTime, PrimitiveDateTime};
@@ -16,6 +16,43 @@ pub struct Cache {
 	pub(crate) last_sync_time: Option<OffsetDateTime>,
 	/// Cached data entries used to check whether an entry has changed
 	pub(crate) entries: CacheEntries,
+	/// Set of missing entries during comparison
+	pub(crate) missing: HashSet<String>,
+}
+
+/// Possible status of a checked entry
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CacheEntryStatus {
+	/// The entry is missing
+	Missing,
+	/// The entry is present and unchanged
+	Unchanged,
+	/// The entry is present and has changed
+	Changed,
+}
+
+impl Cache {
+	/// Start a new comparison with the current entries
+	pub(crate) fn start_comparison(&mut self) {
+		self.missing = self.entries.get_expected();
+	}
+
+	/// Check whether an entry is changed or unchanged and update expeted
+	/// entries
+	pub(crate) fn check_entry(
+		&mut self,
+		entry: &SearchEntry,
+		attributes_config: &AttributeConfig,
+	) -> Result<CacheEntryStatus, Error> {
+		let id = entry.attr_first(&attributes_config.pid).ok_or(Error::Missing)?;
+		self.missing.remove(id);
+		self.entries.check_cache_entry_status(entry, attributes_config)
+	}
+
+	/// End a running comparison with the current entries
+	pub(crate) fn end_comparison_and_return_missing_entries(&mut self) -> &HashSet<String> {
+		&self.missing
+	}
 }
 
 /// Cache data entries used to check whether an entry has changed
@@ -29,23 +66,31 @@ pub enum CacheEntries {
 }
 
 impl CacheEntries {
-	/// Check's whether a user's data has changed
-	pub(crate) fn has_changed(
+	/// Get initial hash set of expected entries
+	pub(crate) fn get_expected(&self) -> HashSet<String> {
+		match *self {
+			CacheEntries::Modified(ref cache) => cache.keys().cloned().collect(),
+			CacheEntries::None => HashSet::new(),
+		}
+	}
+
+	/// Check whether an entry is present or changed
+	pub(crate) fn check_cache_entry_status(
 		&mut self,
 		entry: &SearchEntry,
-		attributes: &AttributeConfig,
-	) -> bool {
+		attributes_config: &AttributeConfig,
+	) -> Result<CacheEntryStatus, Error> {
 		match *self {
 			CacheEntries::Modified(ref mut cache) => {
-				match has_mtime_changed(cache, entry, attributes) {
-					Ok(has_changed) => has_changed,
+				match has_mtime_changed(cache, entry, attributes_config) {
+					Ok(status) => Ok(status),
 					Err(err) => {
 						tracing::warn!("Validating modification time failed: {err}");
-						true
+						Err(err)
 					}
 				}
 			}
-			CacheEntries::None => true,
+			CacheEntries::None => Ok(CacheEntryStatus::Missing),
 		}
 	}
 }
@@ -54,27 +99,27 @@ impl CacheEntries {
 fn has_mtime_changed(
 	times: &mut HashMap<String, OffsetDateTime>,
 	entry: &SearchEntry,
-	attributes: &AttributeConfig,
-) -> Result<bool, Error> {
-	let time = entry.attr_first(&attributes.updated).ok_or(Error::Missing)?;
-	let id = entry.attr_first(&attributes.pid).ok_or(Error::Missing)?;
+	attributes_config: &AttributeConfig,
+) -> Result<CacheEntryStatus, Error> {
+	let time = entry.attr_first(&attributes_config.updated).ok_or(Error::Missing)?;
+	let id = entry.attr_first(&attributes_config.pid).ok_or(Error::Missing)?;
 	let time = PrimitiveDateTime::parse(time, &TIME_FORMAT)?.assume_utc();
 	match times.get_mut(id) {
 		Some(cached) if time > *cached => {
 			*cached = time;
-			Ok(true)
+			Ok(CacheEntryStatus::Changed)
 		}
-		Some(_) => Ok(false),
+		Some(_) => Ok(CacheEntryStatus::Unchanged),
 		None => {
 			times.insert(id.to_owned(), time);
-			Ok(true)
+			Ok(CacheEntryStatus::Missing)
 		}
 	}
 }
 
 /// Errors that can occur when attempting to check if an entry has changed.
 #[derive(Debug, thiserror::Error)]
-enum Error {
+pub(crate) enum Error {
 	/// A time value was malformed and failed to parse.
 	#[error("Malformed time")]
 	Time(#[from] time::error::Parse),
@@ -92,7 +137,10 @@ mod tests {
 	use ldap3::SearchEntry;
 	use time::{Duration, OffsetDateTime};
 
-	use crate::config::{AttributeConfig, TIME_FORMAT};
+	use crate::{
+		cache::CacheEntryStatus,
+		config::{AttributeConfig, TIME_FORMAT},
+	};
 
 	#[test]
 	fn has_mtime_changed() -> Result<(), Box<dyn std::error::Error>> {
@@ -113,12 +161,14 @@ mod tests {
 			bin_attrs: HashMap::new(),
 		};
 
-		assert!(
+		assert_eq!(
 			super::has_mtime_changed(&mut cache, &entry, &attributes)?,
-			"Newly inserted entry should be considered changed",
+			CacheEntryStatus::Missing,
+			"Newly inserted entry should be considered missing",
 		);
-		assert!(
-			!super::has_mtime_changed(&mut cache, &entry, &attributes)?,
+		assert_eq!(
+			super::has_mtime_changed(&mut cache, &entry, &attributes)?,
+			CacheEntryStatus::Unchanged,
 			"Unmodified entry should not be considered changed",
 		);
 
@@ -126,8 +176,9 @@ mod tests {
 		let now = now + Duration::seconds(30);
 		entry.attrs.insert(attributes.updated.clone(), vec![now.format(&TIME_FORMAT)?]);
 
-		assert!(
+		assert_eq!(
 			super::has_mtime_changed(&mut cache, &entry, &attributes)?,
+			CacheEntryStatus::Changed,
 			"Modified entry should be considered changed",
 		);
 

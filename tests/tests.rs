@@ -7,12 +7,12 @@
 	clippy::unwrap_used,
 	clippy::bool_assert_comparison
 )]
+use core::panic;
 use std::{error::Error, time::Duration};
 
-use ldap3::SearchEntry;
 use ldap_poller::{
 	config::{AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches},
-	ldap::{Ldap, UserEntry},
+	ldap::{EntryStatus, Ldap, UserEntry},
 };
 use serial_test::serial;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
@@ -31,7 +31,7 @@ use crate::common::ldap_user_replace_attribute;
 pub fn setup_ldap_poller(
 	sync_once: bool,
 	cache: Option<ldap_poller::Cache>,
-) -> (Ldap, Config, tokio::sync::mpsc::Receiver<SearchEntry>, tokio::task::JoinHandle<()>) {
+) -> (Ldap, Config, tokio::sync::mpsc::Receiver<EntryStatus>, tokio::task::JoinHandle<()>) {
 	let config = Config {
 		url: Url::parse("ldap://localhost:1389").unwrap(),
 		connection: ConnectionConfig::default(),
@@ -88,8 +88,14 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 
 	let mut users = vec![];
 	while let Some(entry) = receiver.recv().await {
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		users.push(user);
+		match entry {
+			EntryStatus::New(entry) => {
+				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+				users.push(user);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
+
 		if users.len() == 3 {
 			break;
 		}
@@ -125,8 +131,13 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		users.push(user);
+		match entry {
+			EntryStatus::New(entry) => {
+				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+				users.push(user);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
 	}
 
 	assert_eq!(users.len(), 1);
@@ -136,8 +147,13 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 	ldap_user_add_attribute(&mut ldap, "user02", "displayName", "MyName2").await?;
 
 	if let Some(entry) = receiver.recv().await {
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		users.push(user);
+		match entry {
+			EntryStatus::New(entry) => {
+				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+				users.push(user);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
 	}
 
 	assert_eq!(users.len(), 2);
@@ -146,6 +162,26 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 
 	ldap_delete_user(&mut ldap, "user01").await?;
 	ldap_delete_user(&mut ldap, "user02").await?;
+
+	let mut deleted_users = Vec::new();
+
+	while let Some(entry) = receiver.recv().await {
+		match entry {
+			EntryStatus::Removed(id) => {
+				deleted_users.push(id);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
+
+		if deleted_users.len() == 2 {
+			break;
+		}
+	}
+
+	assert_eq!(deleted_users.len(), 2);
+	assert!(deleted_users.contains(&"user01".to_owned()));
+	assert!(deleted_users.contains(&"user02".to_owned()));
+
 	ldap_delete_organizational_unit(&mut ldap, "users").await?;
 	ldap.unbind().await?;
 	handle.abort();
@@ -168,8 +204,13 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		users.push(user);
+		match entry {
+			EntryStatus::New(entry) => {
+				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+				users.push(user);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
 	}
 
 	tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
@@ -180,8 +221,13 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	ldap_user_replace_attribute(&mut ldap, "user01", "displayName", "MyNameNew").await?;
 
 	if let Some(entry) = receiver.recv().await {
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		users.push(user);
+		match entry {
+			EntryStatus::Changed(entry) => {
+				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+				users.push(user);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
 	}
 
 	assert_eq!(users.len(), 2);
@@ -193,8 +239,13 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	ldap_user_add_attribute(&mut ldap, "user01", "employeeType", "FALSE").await?;
 
 	if let Some(entry) = receiver.recv().await {
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		users.push(user);
+		match entry {
+			EntryStatus::Changed(entry) => {
+				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+				users.push(user);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
 	}
 
 	assert_eq!(users.len(), 3);
@@ -205,14 +256,29 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	ldap_user_replace_attribute(&mut ldap, "user01", "employeeType", "TRUE").await?;
 
 	if let Some(entry) = receiver.recv().await {
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		users.push(user);
+		match entry {
+			EntryStatus::Changed(entry) => {
+				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+				users.push(user);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
 	}
 
 	assert_eq!(users.len(), 4);
 	assert_eq!(users[3].enabled.unwrap(), true);
 
 	ldap_delete_user(&mut ldap, "user01").await?;
+
+	if let Some(entry) = receiver.recv().await {
+		match entry {
+			EntryStatus::Removed(id) => {
+				assert_eq!(id, "user01");
+			}
+			_ => panic!("Unexpected entry status"),
+		}
+	}
+
 	ldap_delete_organizational_unit(&mut ldap, "users").await?;
 	ldap.unbind().await?;
 	handle.abort();
@@ -235,8 +301,13 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		users.push(user);
+		match entry {
+			EntryStatus::New(entry) => {
+				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+				users.push(user);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
 	}
 
 	assert_eq!(users.len(), 1);
@@ -251,8 +322,13 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 	let (_ldap_poller, config, mut receiver, handle) = setup_ldap_poller(false, Some(cache));
 
 	if let Some(entry) = receiver.recv().await {
-		let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-		users.push(user);
+		match entry {
+			EntryStatus::New(entry) => {
+				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
+				users.push(user);
+			}
+			_ => panic!("Unexpected entry status"),
+		}
 	}
 
 	assert_eq!(users.len(), 2);
