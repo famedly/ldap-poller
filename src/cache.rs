@@ -62,15 +62,16 @@ fn has_mtime_changed(
 	attributes: &AttributeConfig,
 ) -> Result<bool, Error> {
 	let time = entry.attr_first(&attributes.updated).ok_or(Error::Missing)?;
+	let id = entry.attr_first(&attributes.pid).ok_or(Error::Missing)?;
 	let time = PrimitiveDateTime::parse(time, &TIME_FORMAT)?.assume_utc();
-	match times.get_mut(&entry.dn) {
+	match times.get_mut(id) {
 		Some(cached) if time > *cached => {
 			*cached = time;
 			Ok(true)
 		}
 		Some(_) => Ok(false),
 		None => {
-			times.insert(entry.dn.clone(), time);
+			times.insert(id.to_owned(), time);
 			Ok(true)
 		}
 	}
