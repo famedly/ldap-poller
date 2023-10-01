@@ -65,7 +65,6 @@ impl Ldap {
 			cache
 		} else {
 			let cache_entries = match config.cache_method {
-				CacheMethod::Hash => CacheEntries::Hash(HashMap::new()),
 				CacheMethod::ModificationTime => CacheEntries::Modified(HashMap::new()),
 				CacheMethod::Disabled => CacheEntries::None,
 			};

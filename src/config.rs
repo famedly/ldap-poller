@@ -107,8 +107,6 @@ pub struct Searches {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CacheMethod {
-	/// Compare the hash of relevant information
-	Hash,
 	/// Check if the modification time of the user entry is newer than the
 	/// cached one
 	ModificationTime,
