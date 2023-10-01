@@ -70,8 +70,8 @@ pub struct AttributeConfig {
 impl AttributeConfig {
 	/// Returns the list of LDAP object attributes the server should return.
 	#[must_use]
-	pub fn as_list(&self) -> [&str; 6] {
-		["dn", &self.pid, &self.updated, &self.name, &self.admin, &self.enabled]
+	pub fn as_list(&self) -> [&str; 5] {
+		[&self.pid, &self.updated, &self.name, &self.admin, &self.enabled]
 	}
 
 	/// Construct a sample value of this structure suitable for tests
