@@ -39,7 +39,7 @@ pub enum EntryStatus {
 	/// The entry has changed
 	Changed(SearchEntry),
 	/// The entry was removed
-	Removed(String),
+	Removed(Vec<u8>),
 }
 
 impl Ldap {

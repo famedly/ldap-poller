@@ -179,8 +179,8 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 	}
 
 	assert_eq!(deleted_users.len(), 2);
-	assert!(deleted_users.contains(&"user01".to_owned()));
-	assert!(deleted_users.contains(&"user02".to_owned()));
+	assert!(deleted_users.contains(&"user01".as_bytes().to_vec()));
+	assert!(deleted_users.contains(&"user02".as_bytes().to_vec()));
 
 	ldap_delete_organizational_unit(&mut ldap, "users").await?;
 	ldap.unbind().await?;
@@ -269,7 +269,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	if let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::Removed(id) => {
-				assert_eq!(id, "user01");
+				assert_eq!(id, "user01".as_bytes());
 			}
 			_ => panic!("Unexpected entry status"),
 		}

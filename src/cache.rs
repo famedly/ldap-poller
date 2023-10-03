@@ -17,7 +17,7 @@ pub struct Cache {
 	/// Cached data entries used to check whether an entry has changed
 	pub(crate) entries: CacheEntries,
 	/// Set of missing entries during comparison
-	pub(crate) missing: HashSet<String>,
+	pub(crate) missing: HashSet<Vec<u8>>,
 }
 
 /// Possible status of a checked entry
@@ -44,13 +44,13 @@ impl Cache {
 		entry: &SearchEntry,
 		attributes_config: &AttributeConfig,
 	) -> Result<CacheEntryStatus, Error> {
-		let id = entry.attr_first(&attributes_config.pid).ok_or(Error::Missing)?;
+		let id = entry.bin_attr_first(&attributes_config.pid).ok_or(Error::Missing)?;
 		self.missing.remove(id);
 		self.entries.check_cache_entry_status(entry, attributes_config)
 	}
 
 	/// End a running comparison with the current entries
-	pub(crate) fn end_comparison_and_return_missing_entries(&mut self) -> &HashSet<String> {
+	pub(crate) fn end_comparison_and_return_missing_entries(&mut self) -> &HashSet<Vec<u8>> {
 		&self.missing
 	}
 }
@@ -60,14 +60,14 @@ impl Cache {
 pub enum CacheEntries {
 	/// Use the modification time attribute to check whether a user entry has
 	/// changed.
-	Modified(HashMap<String, OffsetDateTime>),
+	Modified(HashMap<Vec<u8>, OffsetDateTime>),
 	/// Don't cache anything, forward all results unconditionally
 	None,
 }
 
 impl CacheEntries {
 	/// Get initial hash set of expected entries
-	pub(crate) fn get_expected(&self) -> HashSet<String> {
+	pub(crate) fn get_expected(&self) -> HashSet<Vec<u8>> {
 		match *self {
 			CacheEntries::Modified(ref cache) => cache.keys().cloned().collect(),
 			CacheEntries::None => HashSet::new(),
@@ -97,12 +97,12 @@ impl CacheEntries {
 
 /// Check whether the modification time of an entry has changed
 fn has_mtime_changed(
-	times: &mut HashMap<String, OffsetDateTime>,
+	times: &mut HashMap<Vec<u8>, OffsetDateTime>,
 	entry: &SearchEntry,
 	attributes_config: &AttributeConfig,
 ) -> Result<CacheEntryStatus, Error> {
 	let time = entry.attr_first(&attributes_config.updated).ok_or(Error::Missing)?;
-	let id = entry.attr_first(&attributes_config.pid).ok_or(Error::Missing)?;
+	let id = entry.bin_attr_first(&attributes_config.pid).ok_or(Error::Missing)?;
 	let time = PrimitiveDateTime::parse(time, &TIME_FORMAT)?.assume_utc();
 	match times.get_mut(id) {
 		Some(cached) if time > *cached => {
