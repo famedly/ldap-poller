@@ -12,7 +12,8 @@ use std::{error::Error, time::Duration};
 
 use ldap_poller::{
 	config::{AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches},
-	ldap::{EntryStatus, Ldap, UserEntry},
+	ldap::{EntryStatus, Ldap},
+	SearchEntryExt,
 };
 use serial_test::serial;
 use tracing_subscriber::{filter::LevelFilter, EnvFilter};
@@ -45,9 +46,11 @@ pub fn setup_ldap_poller(
 		attributes: AttributeConfig {
 			pid: "cn".to_owned(),
 			updated: "modifyTimestamp".to_owned(),
-			name: "displayName".to_owned(),
-			admin: "admin".to_owned(),
-			enabled: "employeeType".to_owned(),
+			additional: vec![
+				"displayName".to_owned(),
+				"admin".to_owned(),
+				"employeeType".to_owned(),
+			],
 		},
 		cache_method: CacheMethod::ModificationTime,
 	};
@@ -84,14 +87,13 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user03", "User3").await?;
 	ldap_user_add_attribute(&mut ldap, "user03", "displayName", "MyName3").await?;
 
-	let (_ldap_poller, config, mut receiver, handle) = setup_ldap_poller(true, None);
+	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(true, None);
 
 	let mut users = vec![];
 	while let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::New(entry) => {
-				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-				users.push(user);
+				users.push(entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
@@ -102,9 +104,9 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 	}
 
 	assert_eq!(users.len(), 3);
-	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
-	assert_eq!(users[1].name.as_ref().unwrap(), "MyName2");
-	assert_eq!(users[2].name.as_ref().unwrap(), "MyName3");
+	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
+	assert_eq!(users[1].attr_first("displayName").unwrap(), "MyName2");
+	assert_eq!(users[2].attr_first("displayName").unwrap(), "MyName3");
 
 	ldap_delete_user(&mut ldap, "user01").await?;
 	ldap_delete_user(&mut ldap, "user02").await?;
@@ -127,21 +129,20 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user01", "User1").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
-	let (_ldap_poller, config, mut receiver, handle) = setup_ldap_poller(false, None);
+	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, None);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::New(entry) => {
-				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-				users.push(user);
+				users.push(entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
 	}
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
+	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
 
 	ldap_add_user(&mut ldap, "user02", "User2").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user02", "displayName", "MyName2").await?;
@@ -149,16 +150,15 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 	if let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::New(entry) => {
-				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-				users.push(user);
+				users.push(entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
 	}
 
 	assert_eq!(users.len(), 2);
-	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
-	assert_eq!(users[1].name.as_ref().unwrap(), "MyName2");
+	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
+	assert_eq!(users[1].attr_first("displayName").unwrap(), "MyName2");
 
 	ldap_delete_user(&mut ldap, "user01").await?;
 	ldap_delete_user(&mut ldap, "user02").await?;
@@ -200,14 +200,13 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user01", "User1").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
-	let (_ldap_poller, config, mut receiver, handle) = setup_ldap_poller(false, None);
+	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, None);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::New(entry) => {
-				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-				users.push(user);
+				users.push(entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
@@ -216,23 +215,22 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
+	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
 
 	ldap_user_replace_attribute(&mut ldap, "user01", "displayName", "MyNameNew").await?;
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::Changed(entry) => {
-				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-				users.push(user);
+				users.push(entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
 	}
 
 	assert_eq!(users.len(), 2);
-	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
-	assert_eq!(users[1].name.as_ref().unwrap(), "MyNameNew");
+	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
+	assert_eq!(users[1].attr_first("displayName").unwrap(), "MyNameNew");
 
 	tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
@@ -241,15 +239,14 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	if let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::Changed(entry) => {
-				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-				users.push(user);
+				users.push(entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
 	}
 
 	assert_eq!(users.len(), 3);
-	assert_eq!(users[2].enabled.unwrap(), false);
+	assert_eq!(users[2].bool_first("employeeType").unwrap().unwrap(), false);
 
 	tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
 
@@ -258,15 +255,14 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	if let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::Changed(entry) => {
-				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-				users.push(user);
+				users.push(entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
 	}
 
 	assert_eq!(users.len(), 4);
-	assert_eq!(users[3].enabled.unwrap(), true);
+	assert_eq!(users[3].bool_first("employeeType").unwrap().unwrap(), true);
 
 	ldap_delete_user(&mut ldap, "user01").await?;
 
@@ -297,21 +293,20 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user01", "User1").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
-	let (ldap_poller, config, mut receiver, handle) = setup_ldap_poller(false, None);
+	let (ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, None);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::New(entry) => {
-				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-				users.push(user);
+				users.push(entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
 	}
 
 	assert_eq!(users.len(), 1);
-	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
+	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
 
 	let cache = ldap_poller.persist_cache().await.unwrap();
 	handle.abort();
@@ -319,21 +314,20 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user02", "User2").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user02", "displayName", "MyName2").await?;
 
-	let (_ldap_poller, config, mut receiver, handle) = setup_ldap_poller(false, Some(cache));
+	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, Some(cache));
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {
 			EntryStatus::New(entry) => {
-				let user = UserEntry::from_search(entry, &config.attributes).unwrap();
-				users.push(user);
+				users.push(entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
 	}
 
 	assert_eq!(users.len(), 2);
-	assert_eq!(users[0].name.as_ref().unwrap(), "MyName1");
-	assert_eq!(users[1].name.as_ref().unwrap(), "MyName2");
+	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
+	assert_eq!(users[1].attr_first("displayName").unwrap(), "MyName2");
 
 	ldap_delete_user(&mut ldap, "user01").await?;
 	ldap_delete_user(&mut ldap, "user02").await?;

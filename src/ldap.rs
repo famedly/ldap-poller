@@ -16,8 +16,7 @@ use tracing::{error, warn};
 pub use crate::cache::Cache;
 use crate::{
 	cache::{CacheEntries, CacheEntryStatus},
-	config::{AttributeConfig, CacheMethod, Config},
-	entry::SearchEntryExt,
+	config::{CacheMethod, Config},
 	error::Error,
 };
 
@@ -41,31 +40,6 @@ pub enum EntryStatus {
 	Changed(SearchEntry),
 	/// The entry was removed
 	Removed(String),
-}
-
-/// Data about a user
-#[derive(Debug, Clone)]
-pub struct UserEntry {
-	/// The immutable globally unique ID of the user.
-	pub pid: Vec<u8>,
-	/// Display name.
-	pub name: Option<String>,
-	/// Whether the user has administrator rights.
-	pub admin: Option<bool>,
-	/// Whether the user has been enabled.
-	pub enabled: Option<bool>,
-}
-
-impl UserEntry {
-	/// Converts a [`SearchEntry`] to a [`UserEntry`] using the attribute names
-	/// in the given configuration.
-	pub fn from_search(entry: SearchEntry, attributes: &AttributeConfig) -> Result<Self, Error> {
-		let pid = entry.bin_attr_first(&attributes.pid).ok_or(Error::Missing)?.to_owned();
-		let name = entry.attr_first(&attributes.name).map(String::from);
-		let admin = entry.bool_first(&attributes.admin).transpose()?;
-		let enabled = entry.bool_first(&attributes.enabled).transpose()?;
-		Ok(Self { pid, name, admin, enabled })
-	}
 }
 
 impl Ldap {
@@ -151,7 +125,7 @@ impl Ldap {
 				&self.config.searches.user_base,
 				Scope::Subtree,
 				&filter,
-				attributes.as_list(),
+				attributes.as_vec(),
 			)
 			.await?;
 

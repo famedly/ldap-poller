@@ -59,31 +59,25 @@ pub struct AttributeConfig {
 	/// Name of the attribute that holds the time an object was most recently
 	/// modified
 	pub updated: String,
-	/// Display name of the user.
-	pub name: String,
-	/// The attribute determining whether a user has administrator rights.
-	pub admin: String,
-	/// The attribute that determines whether or not a user is (de)activated.
-	pub enabled: String,
+	/// Additional attributes
+	pub additional: Vec<String>,
 }
 
 impl AttributeConfig {
 	/// Returns the list of LDAP object attributes the server should return.
 	#[must_use]
-	pub fn as_list(&self) -> [&str; 5] {
-		[&self.pid, &self.updated, &self.name, &self.admin, &self.enabled]
+	pub fn as_vec(&self) -> Vec<String> {
+		let mandatory = [self.pid.clone(), self.updated.clone()];
+		[&self.additional[..], &mandatory[..]].concat()
 	}
 
-	/// Construct a sample value of this structure suitable for tests
-	#[cfg(test)]
-	#[must_use]
-	pub fn example() -> Self {
+	/// Returns an example AttributesConfig
+	#[allow(dead_code)]
+	pub(crate) fn example() -> Self {
 		AttributeConfig {
-			pid: "uid".to_owned(),
+			pid: "objectGUID".to_owned(),
 			updated: "mtime".to_owned(),
-			name: "cn".to_owned(),
-			admin: "admin".to_owned(),
-			enabled: "deactivated".to_owned(),
+			additional: vec!["admin".to_owned()],
 		}
 	}
 }

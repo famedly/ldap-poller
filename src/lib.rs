@@ -54,8 +54,6 @@
 //! });
 //! while let Some(entry) = receiver.recv().await {
 //! 	println!("Received entry: {entry:#?}");
-//! 	let user = UserEntry::from_search(entry, &config.attributes)?;
-//! 	println!("Parsed entry as: {user:#?}");
 //! }
 //!
 //! # Ok(())
@@ -87,5 +85,5 @@ pub use ldap3::{self, SearchEntry};
 pub use crate::{
 	config::{AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches},
 	entry::SearchEntryExt,
-	ldap::{Cache, Ldap, UserEntry},
+	ldap::{Cache, Ldap},
 };
