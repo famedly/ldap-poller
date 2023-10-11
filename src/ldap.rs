@@ -88,10 +88,7 @@ impl Ldap {
 
 	/// Perform a search of all available users, pushing any entries which have
 	/// changed
-	pub async fn sync_once(
-		&mut self,
-		_last_sync_time: Option<OffsetDateTime>,
-	) -> Result<(), Error> {
+	pub async fn sync_once(&mut self, last_sync_time: Option<OffsetDateTime>) -> Result<(), Error> {
 		// TODO: more LDAP server configurations.
 		let (conn, mut ldap) = self.connect().await?;
 		let conn = tokio::spawn(async move {
@@ -108,16 +105,19 @@ impl Ldap {
 			adapters.push(Box::new(PagedResults::new(page_size)));
 		}
 		let attributes = self.config.attributes.clone();
-		// let filter = if let Some(last_sync_time) = last_sync_time {
-		// 	format!(
-		// 		"(&{}({}>={}))",
-		// 		self.config.searches.user_filter,
-		// 		self.config.attributes.updated,
-		// 		last_sync_time.format(&crate::config::TIME_FORMAT).map_err(|_|
-		// Error::Invalid)?, 	)
-		// } else {
-		let filter = self.config.searches.user_filter.clone();
-		// };
+		let filter = match (self.config.check_for_deleted_entries, last_sync_time) {
+			(false, Some(last_sync_time)) => {
+				format!(
+					"(&{}({}>={}))",
+					self.config.searches.user_filter,
+					self.config.attributes.updated,
+					last_sync_time
+						.format(&crate::config::TIME_FORMAT)
+						.map_err(|_| Error::Invalid)?,
+				)
+			}
+			_ => self.config.searches.user_filter.clone(),
+		};
 
 		let mut search = ldap
 			.streaming_search_with(
@@ -150,9 +150,12 @@ impl Ldap {
 		}
 		search.finish().await.success()?;
 
-		let missing = self.cache.write().await.end_comparison_and_return_missing_entries().clone();
-		for id in missing {
-			self.send_channel_update(EntryStatus::Removed(id.clone())).await;
+		if self.config.check_for_deleted_entries {
+			let missing =
+				self.cache.write().await.end_comparison_and_return_missing_entries().clone();
+			for id in missing {
+				self.send_channel_update(EntryStatus::Removed(id.clone())).await;
+			}
 		}
 
 		ldap.unbind().await?;

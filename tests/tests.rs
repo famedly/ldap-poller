@@ -32,6 +32,7 @@ use crate::common::ldap_user_replace_attribute;
 pub fn setup_ldap_poller(
 	sync_once: bool,
 	cache: Option<ldap_poller::Cache>,
+	check_for_deleted_entries: bool,
 ) -> (Ldap, Config, tokio::sync::mpsc::Receiver<EntryStatus>, tokio::task::JoinHandle<()>) {
 	let config = Config {
 		url: Url::parse("ldap://localhost:1389").unwrap(),
@@ -53,6 +54,7 @@ pub fn setup_ldap_poller(
 			],
 		},
 		cache_method: CacheMethod::ModificationTime,
+		check_for_deleted_entries,
 	};
 
 	let (client, receiver) = Ldap::new(config.clone(), cache);
@@ -87,7 +89,7 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user03", "User3").await?;
 	ldap_user_add_attribute(&mut ldap, "user03", "displayName", "MyName3").await?;
 
-	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(true, None);
+	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(true, None, false);
 
 	let mut users = vec![];
 	while let Some(entry) = receiver.recv().await {
@@ -129,7 +131,7 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user01", "User1").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
-	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, None);
+	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, None, true);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
@@ -200,7 +202,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user01", "User1").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
-	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, None);
+	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, None, true);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
@@ -293,7 +295,7 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user01", "User1").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
-	let (ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, None);
+	let (ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, None, false);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
@@ -314,7 +316,8 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 	ldap_add_user(&mut ldap, "user02", "User2").await.unwrap();
 	ldap_user_add_attribute(&mut ldap, "user02", "displayName", "MyName2").await?;
 
-	let (_ldap_poller, _config, mut receiver, handle) = setup_ldap_poller(false, Some(cache));
+	let (_ldap_poller, _config, mut receiver, handle) =
+		setup_ldap_poller(false, Some(cache), false);
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {

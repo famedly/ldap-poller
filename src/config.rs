@@ -31,6 +31,8 @@ pub struct Config {
 	pub attributes: AttributeConfig,
 	/// How caching of user data should be performed
 	pub cache_method: CacheMethod,
+	/// Check for deleted entries (full search on every sync needed)
+	pub check_for_deleted_entries: bool,
 }
 
 /// Configuration for how to connect to the LDAP server. Uses defaults from
