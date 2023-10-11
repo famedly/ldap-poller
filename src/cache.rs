@@ -28,7 +28,7 @@ pub(crate) enum CacheEntryStatus {
 	/// The entry is present and unchanged
 	Unchanged,
 	/// The entry is present and has changed
-	Changed,
+	Changed(SerializedSearchEntry),
 }
 
 impl Cache {
@@ -55,12 +55,35 @@ impl Cache {
 	}
 }
 
+/// Serialized version of a search entry
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub struct SerializedSearchEntry {
+	/// Entry DN.
+	pub dn: String,
+	/// Attributes.
+	pub attrs: HashMap<String, Vec<String>>,
+	/// Binary-valued attributes.
+	pub bin_attrs: HashMap<String, Vec<Vec<u8>>>,
+}
+
+impl From<SearchEntry> for SerializedSearchEntry {
+	fn from(entry: SearchEntry) -> Self {
+		SerializedSearchEntry { dn: entry.dn, attrs: entry.attrs, bin_attrs: entry.bin_attrs }
+	}
+}
+
+impl From<SerializedSearchEntry> for SearchEntry {
+	fn from(entry: SerializedSearchEntry) -> Self {
+		SearchEntry { dn: entry.dn, attrs: entry.attrs, bin_attrs: entry.bin_attrs }
+	}
+}
+
 /// Cache data entries used to check whether an entry has changed
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum CacheEntries {
 	/// Use the modification time attribute to check whether a user entry has
 	/// changed.
-	Modified(HashMap<Vec<u8>, OffsetDateTime>),
+	Modified(HashMap<Vec<u8>, (OffsetDateTime, SerializedSearchEntry)>),
 	/// Don't cache anything, forward all results unconditionally
 	None,
 }
@@ -97,7 +120,7 @@ impl CacheEntries {
 
 /// Check whether the modification time of an entry has changed
 fn has_mtime_changed(
-	times: &mut HashMap<Vec<u8>, OffsetDateTime>,
+	times: &mut HashMap<Vec<u8>, (OffsetDateTime, SerializedSearchEntry)>,
 	entry: &SearchEntry,
 	attributes_config: &AttributeConfig,
 ) -> Result<CacheEntryStatus, Error> {
@@ -105,13 +128,13 @@ fn has_mtime_changed(
 	let id = entry.bin_attr_first(&attributes_config.pid).ok_or(Error::Missing)?;
 	let time = PrimitiveDateTime::parse(time, &TIME_FORMAT)?.assume_utc();
 	match times.get_mut(id) {
-		Some(cached) if time > *cached => {
-			*cached = time;
-			Ok(CacheEntryStatus::Changed)
+		Some((cached_time, entry)) if time > *cached_time => {
+			*cached_time = time;
+			Ok(CacheEntryStatus::Changed(entry.clone()))
 		}
 		Some(_) => Ok(CacheEntryStatus::Unchanged),
 		None => {
-			times.insert(id.to_owned(), time);
+			times.insert(id.to_owned(), (time, Into::<SerializedSearchEntry>::into(entry.clone())));
 			Ok(CacheEntryStatus::Missing)
 		}
 	}
@@ -172,13 +195,14 @@ mod tests {
 			"Unmodified entry should not be considered changed",
 		);
 
+		let old = entry.clone();
 		// Change the modification time
 		let now = now + Duration::seconds(30);
 		entry.attrs.insert(attributes.updated.clone(), vec![now.format(&TIME_FORMAT)?]);
 
 		assert_eq!(
 			super::has_mtime_changed(&mut cache, &entry, &attributes)?,
-			CacheEntryStatus::Changed,
+			CacheEntryStatus::Changed(old.into()),
 			"Modified entry should be considered changed",
 		);
 

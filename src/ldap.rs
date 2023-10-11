@@ -37,7 +37,7 @@ pub enum EntryStatus {
 	/// The entry is new
 	New(SearchEntry),
 	/// The entry has changed
-	Changed(SearchEntry),
+	Changed(SearchEntry, SearchEntry),
 	/// The entry was removed
 	Removed(Vec<u8>),
 }
@@ -139,8 +139,8 @@ impl Ldap {
 					self.send_channel_update(EntryStatus::New(entry)).await;
 				}
 				Ok(CacheEntryStatus::Unchanged) => continue,
-				Ok(CacheEntryStatus::Changed) => {
-					self.send_channel_update(EntryStatus::Changed(entry)).await;
+				Ok(CacheEntryStatus::Changed(old)) => {
+					self.send_channel_update(EntryStatus::Changed(entry, old.into())).await;
 				}
 				Err(err) => {
 					error!("Validating cache entry failed: {err}");

@@ -221,8 +221,8 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {
-			EntryStatus::Changed(entry) => {
-				users.push(entry);
+			EntryStatus::Changed(new_entry, _old_entry) => {
+				users.push(new_entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
@@ -238,8 +238,8 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {
-			EntryStatus::Changed(entry) => {
-				users.push(entry);
+			EntryStatus::Changed(new_entry, _old_entry) => {
+				users.push(new_entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
@@ -254,8 +254,8 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {
-			EntryStatus::Changed(entry) => {
-				users.push(entry);
+			EntryStatus::Changed(new_entry, _old_entry) => {
+				users.push(new_entry);
 			}
 			_ => panic!("Unexpected entry status"),
 		}
