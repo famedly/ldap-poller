@@ -37,7 +37,7 @@ impl Cache {
 		self.missing = self.entries.get_expected();
 	}
 
-	/// Check whether an entry is changed or unchanged and update expeted
+	/// Check whether an entry is changed or unchanged and update expected
 	/// entries
 	pub(crate) fn check_entry(
 		&mut self,
