@@ -22,7 +22,7 @@
 //! 	config::{
 //! 		AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches,
 //! 	},
-//! 	ldap::{Ldap, UserEntry},
+//! 	ldap::Ldap,
 //! };
 //! use url::Url;
 //!
@@ -41,11 +41,10 @@
 //! 	attributes: AttributeConfig {
 //! 		pid: "objectGUID".to_owned(),
 //! 		updated: "mtime".to_owned(),
-//! 		name: "cn".to_owned(),
-//! 		admin: "admin".to_owned(),
-//! 		enabled: "enabled".to_owned(),
+//! 		additional: vec![],
 //! 	},
 //! 	cache_method: CacheMethod::ModificationTime,
+//! 	check_for_deleted_entries: false,
 //! };
 //!
 //! let (mut client, mut receiver) = Ldap::new(config.clone(), None);
