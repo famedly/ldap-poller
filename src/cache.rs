@@ -128,9 +128,11 @@ fn has_mtime_changed(
 	let id = entry.bin_attr_first(&attributes_config.pid).ok_or(Error::Missing)?;
 	let time = PrimitiveDateTime::parse(time, &TIME_FORMAT)?.assume_utc();
 	match times.get_mut(id) {
-		Some((cached_time, entry)) if time > *cached_time => {
+		Some((cached_time, old_entry)) if time > *cached_time => {
 			*cached_time = time;
-			Ok(CacheEntryStatus::Changed(entry.clone()))
+			let old_entry_clone = old_entry.clone();
+			*old_entry = Into::<SerializedSearchEntry>::into(entry.clone());
+			Ok(CacheEntryStatus::Changed(old_entry_clone))
 		}
 		Some(_) => Ok(CacheEntryStatus::Unchanged),
 		None => {
