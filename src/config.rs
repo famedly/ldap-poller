@@ -68,7 +68,7 @@ pub struct AttributeConfig {
 impl AttributeConfig {
 	/// Returns the list of LDAP object attributes the server should return.
 	#[must_use]
-	pub fn as_vec(&self) -> Vec<String> {
+	pub fn to_vec(&self) -> Vec<String> {
 		let mandatory = [self.pid.clone(), self.updated.clone()];
 		[&self.additional[..], &mandatory[..]].concat()
 	}

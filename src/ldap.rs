@@ -125,7 +125,7 @@ impl Ldap {
 				&self.config.searches.user_base,
 				Scope::Subtree,
 				&filter,
-				attributes.as_vec(),
+				attributes.to_vec(),
 			)
 			.await?;
 
