@@ -1,9 +1,12 @@
 //! Config for the LDAP client.
-use std::time::Duration;
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use ldap3::LdapConnSettings;
+use rustls::{Certificate, RootCertStore};
 use serde::{Deserialize, Serialize};
 use url::Url;
+
+use crate::error::Error;
 
 /// Configuration for which variant of ISO8601 to use for parsing and
 /// serializing time. Configured according the syntax definition
@@ -51,6 +54,17 @@ pub struct ConnectionConfig {
 	/// Disable verification of TLS certificates. False if unset.
 	#[serde(default)]
 	pub no_tls_verify: Option<bool>,
+
+	/// Optional TLS config
+	#[serde(default)]
+	pub tls: Option<TLSConfig>,
+}
+
+/// TLS Configuration
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct TLSConfig {
+	/// TLS root certificate path
+	pub root_certificate_path: PathBuf,
 }
 
 /// Names of attributes to use for extracting relevant data
@@ -112,7 +126,7 @@ pub enum CacheMethod {
 
 impl ConnectionConfig {
 	/// Create a [`LdapConnSettings`] based on this [`ConnectionConfig`]
-	pub(crate) fn to_settings(&self) -> LdapConnSettings {
+	pub(crate) async fn to_settings(&self) -> Result<LdapConnSettings, Error> {
 		let mut settings = LdapConnSettings::new();
 		if let Some(timeout) = self.timeout {
 			settings = settings.set_conn_timeout(Duration::from_secs(timeout));
@@ -123,8 +137,23 @@ impl ConnectionConfig {
 		if let Some(no_tls_verify) = self.no_tls_verify {
 			settings = settings.set_no_tls_verify(no_tls_verify);
 		}
-		// TODO: Option for native platform TLS certs when using rustls
-		settings
+		if let Some(config) = &self.tls {
+			let contents = tokio::fs::read(&config.root_certificate_path).await?;
+			let certs = rustls_pemfile::certs(&mut contents.as_slice())?;
+			if certs.is_empty() {
+				return Err(Error::Invalid("No certificates found".to_owned()));
+			}
+			let mut store = RootCertStore::empty();
+			for cert in certs.into_iter().map(Certificate) {
+				store.add(&cert)?;
+			}
+			let client_config = rustls::ClientConfig::builder()
+				.with_safe_defaults()
+				.with_root_certificates(Arc::new(store))
+				.with_no_client_auth();
+			settings = settings.set_config(client_config.into());
+		}
+		Ok(settings)
 	}
 }
 
@@ -132,13 +161,47 @@ impl ConnectionConfig {
 mod tests {
 	#![allow(clippy::unwrap_used, clippy::items_after_statements)]
 
+	use std::path::PathBuf;
+
 	use time::PrimitiveDateTime;
 
 	use super::TIME_FORMAT;
+	use crate::{config::TLSConfig, ConnectionConfig};
 
 	#[test]
 	fn test_time_config() -> Result<(), Box<dyn std::error::Error>> {
 		PrimitiveDateTime::parse("20130516200520Z", &TIME_FORMAT)?;
+
+		Ok(())
+	}
+
+	#[tokio::test]
+	async fn test_tls_config() -> Result<(), Box<dyn std::error::Error>> {
+		// default test
+		ConnectionConfig::default().to_settings().await?;
+
+		// working test
+		ConnectionConfig {
+			tls: Some(TLSConfig {
+				root_certificate_path: PathBuf::from("docker-env/certs/RootCA.crt"),
+			}),
+			..Default::default()
+		}
+		.to_settings()
+		.await?;
+
+		// invalid crt test
+		assert!(matches!(
+			ConnectionConfig {
+				tls: Some(TLSConfig { root_certificate_path: PathBuf::from("src/config.rs") }),
+				..Default::default()
+			}
+			.to_settings()
+			.await
+			.err()
+			.unwrap(),
+			crate::error::Error::Invalid(_)
+		));
 
 		Ok(())
 	}

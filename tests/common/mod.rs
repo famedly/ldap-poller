@@ -2,7 +2,8 @@
 
 use std::error::Error;
 
-use ldap3::{LdapConnAsync, SearchEntry};
+use ldap3::{LdapConnAsync, LdapConnSettings, SearchEntry};
+use url::Url;
 
 pub async fn ldap_add_organizational_unit(
 	ldap: &mut ldap3::Ldap,
@@ -25,8 +26,18 @@ pub async fn ldap_delete_organizational_unit(
 	Ok(())
 }
 
-pub async fn ldap_connect() -> Result<ldap3::Ldap, Box<dyn Error>> {
-	let (conn, mut ldap) = LdapConnAsync::new("ldap://localhost:1389").await?;
+pub async fn ldap_connect(tls: bool) -> Result<ldap3::Ldap, Box<dyn Error>> {
+	let (conn, mut ldap) = {
+		if tls {
+			LdapConnAsync::from_url_with_settings(
+				LdapConnSettings::new().set_no_tls_verify(true),
+				&Url::parse("ldaps://localhost:1336")?,
+			)
+			.await?
+		} else {
+			LdapConnAsync::new("ldap://localhost:1389").await?
+		}
+	};
 	let _handle = tokio::spawn(async move {
 		if let Err(err) = conn.drive().await {
 			panic!("Ldap connection error {err}");

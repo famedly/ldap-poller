@@ -64,7 +64,7 @@ impl Ldap {
 	/// Create a connection to an ldap server based on the settings and url
 	/// specified in the configuration.
 	async fn connect(&self) -> Result<(LdapConnAsync, ldap3::Ldap), Error> {
-		let settings = self.config.connection.to_settings();
+		let settings = self.config.connection.to_settings().await?;
 		let (conn, ldap) =
 			LdapConnAsync::from_url_with_settings(settings, &self.config.url).await?;
 		Ok((conn, ldap))
@@ -113,7 +113,7 @@ impl Ldap {
 					self.config.attributes.updated,
 					last_sync_time
 						.format(&crate::config::TIME_FORMAT)
-						.map_err(|_| Error::Invalid)?,
+						.map_err(|_| Error::Invalid("TIME_FORMAT is invalid".to_owned()))?,
 				)
 			}
 			_ => self.config.searches.user_filter.clone(),

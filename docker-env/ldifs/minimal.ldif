@@ -1,0 +1,6 @@
+dn: dc=example,dc=org
+objectclass: top
+objectclass: dcObject
+objectClass: organization
+dc: example
+o: Example Organization Name

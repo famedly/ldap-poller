@@ -38,7 +38,7 @@ impl SearchEntryExt for SearchEntry {
 		match self.attr_first(attr) {
 			Some("TRUE") => Some(Ok(true)),
 			Some("FALSE") => Some(Ok(false)),
-			Some(_) => Some(Err(Error::Invalid)),
+			Some(_) => Some(Err(Error::Invalid(attr.to_owned()))),
 			None => None,
 		}
 	}

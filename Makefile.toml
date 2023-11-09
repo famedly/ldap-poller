@@ -26,11 +26,22 @@ args = ["compose", "-f", "docker-env/docker-compose.yml", "down", "-v"]
 command = "docker"
 args = ["compose", "-f", "docker-env/docker-compose.yml", "build"]
 
+[tasks.generate-certs]
+command = "bash"
+args = ["docker-env/certs/generate_certs.sh"]
+
+[tasks.remove-certs]
+script = "rm docker-env/certs/*.pem docker-env/certs/*.crt docker-env/certs/*.key"
+
 [tasks.start-docker-setup]
-dependencies = ["build-containers", "create-and-start-containers"]
+dependencies = [
+    "generate-certs",
+    "build-containers",
+    "create-and-start-containers",
+]
 
 [tasks.stop-docker-setup]
-dependencies = ["stop-and-remove-containers"]
+dependencies = ["stop-and-remove-containers", "remove-certs"]
 
 [tasks.integration-test]
 dependencies = ["start-docker-setup", "default", "stop-docker-setup"]

@@ -3,3 +3,7 @@
 Cargo.lock
 /cargo_home
 .DS_Store
+.crt
+.pem
+.key
+!docker-env/certs/RootCA.crt

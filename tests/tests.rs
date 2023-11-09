@@ -8,10 +8,10 @@
 	clippy::bool_assert_comparison
 )]
 use core::panic;
-use std::{error::Error, time::Duration};
+use std::{error::Error, path::PathBuf, time::Duration};
 
 use ldap_poller::{
-	config::{AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches},
+	config::{AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches, TLSConfig},
 	ldap::{EntryStatus, Ldap},
 	SearchEntryExt,
 };
@@ -42,10 +42,32 @@ fn setup_ldap_poller(
 	sync_once: bool,
 	cache: Option<ldap_poller::Cache>,
 	check_for_deleted_entries: bool,
+	tls: bool,
 ) -> LdapPollerSetup {
+	let url = {
+		if tls {
+			Url::parse("ldaps://localhost:1336").unwrap()
+		} else {
+			Url::parse("ldap://localhost:1389").unwrap()
+		}
+	};
+
+	let connection = {
+		if tls {
+			ConnectionConfig {
+				tls: Some(TLSConfig {
+					root_certificate_path: PathBuf::from("docker-env/certs/RootCA.crt"),
+				}),
+				..Default::default()
+			}
+		} else {
+			ConnectionConfig::default()
+		}
+	};
+
 	let config = Config {
-		url: Url::parse("ldap://localhost:1389").unwrap(),
-		connection: ConnectionConfig::default(),
+		url,
+		connection,
 		search_user: String::new(),
 		search_password: String::new(),
 		searches: Searches {
@@ -87,7 +109,11 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 	let tracing_filter = EnvFilter::default().add_directive(LevelFilter::DEBUG.into());
 	tracing_subscriber::fmt().with_env_filter(tracing_filter).init();
 
-	let mut ldap = ldap_connect().await?;
+	sync_one_test(false).await
+}
+
+async fn sync_one_test(tls: bool) -> Result<(), Box<dyn Error>> {
+	let mut ldap = ldap_connect(tls).await?;
 	let _ = ldap_delete_organizational_unit(&mut ldap, "users").await;
 
 	ldap_add_organizational_unit(&mut ldap, "users").await?;
@@ -99,7 +125,7 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 	ldap_user_add_attribute(&mut ldap, "user03", "displayName", "MyName3").await?;
 
 	let LdapPollerSetup { mut receiver, ldap: _, config: _, thread_handle } =
-		setup_ldap_poller(true, None, false);
+		setup_ldap_poller(true, None, false, tls);
 
 	let mut users = vec![];
 	while let Some(entry) = receiver.recv().await {
@@ -126,7 +152,6 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 	ldap_delete_organizational_unit(&mut ldap, "users").await?;
 	ldap.unbind().await?;
 	thread_handle.abort();
-
 	Ok(())
 }
 
@@ -134,7 +159,7 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[serial]
 async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
-	let mut ldap = ldap_connect().await?;
+	let mut ldap = ldap_connect(false).await?;
 	let _ = ldap_delete_organizational_unit(&mut ldap, "users").await;
 
 	ldap_add_organizational_unit(&mut ldap, "users").await.unwrap();
@@ -142,7 +167,7 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
 	let LdapPollerSetup { mut receiver, ldap: _, config: _, thread_handle } =
-		setup_ldap_poller(false, None, true);
+		setup_ldap_poller(false, None, true, false);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
@@ -206,7 +231,7 @@ async fn ldap_user_sync_create_test() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[serial]
 async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
-	let mut ldap = ldap_connect().await?;
+	let mut ldap = ldap_connect(false).await?;
 	let _ = ldap_delete_organizational_unit(&mut ldap, "users").await;
 
 	ldap_add_organizational_unit(&mut ldap, "users").await.unwrap();
@@ -214,7 +239,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
 	let LdapPollerSetup { mut receiver, ldap: _, config: _, thread_handle } =
-		setup_ldap_poller(false, None, true);
+		setup_ldap_poller(false, None, true, false);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
@@ -300,7 +325,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 #[tokio::test]
 #[serial]
 async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
-	let mut ldap = ldap_connect().await?;
+	let mut ldap = ldap_connect(false).await?;
 	let _ = ldap_delete_organizational_unit(&mut ldap, "users").await;
 
 	ldap_add_organizational_unit(&mut ldap, "users").await.unwrap();
@@ -308,7 +333,7 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 	ldap_user_add_attribute(&mut ldap, "user01", "displayName", "MyName1").await?;
 
 	let LdapPollerSetup { mut receiver, ldap: ldap_poller, config: _, thread_handle } =
-		setup_ldap_poller(false, None, false);
+		setup_ldap_poller(false, None, false, false);
 
 	let mut users = vec![];
 	if let Some(entry) = receiver.recv().await {
@@ -330,7 +355,7 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 	ldap_user_add_attribute(&mut ldap, "user02", "displayName", "MyName2").await?;
 
 	let LdapPollerSetup { mut receiver, ldap: _, config: _, thread_handle } =
-		setup_ldap_poller(false, Some(cache), false);
+		setup_ldap_poller(false, Some(cache), false, false);
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {
@@ -352,4 +377,11 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 	thread_handle.abort();
 
 	Ok(())
+}
+
+#[ignore = "docker"]
+#[tokio::test]
+#[serial]
+async fn ldap_tls_test() -> Result<(), Box<dyn Error>> {
+	sync_one_test(true).await
 }

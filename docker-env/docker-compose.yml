@@ -7,6 +7,16 @@ services:
     environment:
       - LDAP_ADMIN_USERNAME=admin
       - LDAP_ADMIN_PASSWORD=adminpassword
+      - LDAP_ENABLE_TLS=yes
+      - LDAP_LDAPS_PORT_NUMBER=1336
+      - LDAP_TLS_CERT_FILE=certs/localhost.crt
+      - LDAP_TLS_KEY_FILE=certs/localhost.key
+      - LDAP_TLS_CA_FILE=certs/RootCA.crt
+      - LDAP_BASE=dc=example,dc=org
+    volumes:
+      - ./certs:/certs
+      - ./ldifs:/ldifs
     ports:
       - 1389:1389/tcp
+      - 1336:1336/tcp
 
