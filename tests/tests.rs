@@ -53,16 +53,19 @@ fn setup_ldap_poller(
 	};
 
 	let connection = {
-		if tls {
-			ConnectionConfig {
-				tls: Some(TLSConfig {
-					root_certificate_path: PathBuf::from("docker-env/certs/RootCA.crt"),
-				}),
-				..Default::default()
-			}
-		} else {
-			ConnectionConfig::default()
+		let mut c = ConnectionConfig {
+			timeout: 5,
+			tls: TLSConfig {
+				root_certificates_path: Some(PathBuf::from("docker-env/certs/RootCA.crt")),
+				starttls: false,
+				no_tls_verify: false,
+			},
+			operation_timeout: Duration::from_secs(5),
+		};
+		if !tls {
+			c.tls.root_certificates_path = None;
 		}
+		c
 	};
 
 	let config = Config {

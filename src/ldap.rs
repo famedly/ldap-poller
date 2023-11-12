@@ -97,7 +97,9 @@ impl Ldap {
 			}
 		});
 
-		ldap.simple_bind(&self.config.search_user, &self.config.search_password).await?;
+		ldap.with_timeout(self.config.connection.operation_timeout)
+			.simple_bind(&self.config.search_user, &self.config.search_password)
+			.await?;
 
 		// Prepare search parameters
 		let mut adapters: Vec<Box<dyn Adapter<_, _>>> = vec![Box::new(EntriesOnly::new())];
@@ -120,6 +122,7 @@ impl Ldap {
 		};
 
 		let mut search = ldap
+			.with_timeout(self.config.connection.operation_timeout)
 			.streaming_search_with(
 				adapters,
 				&self.config.searches.user_base,
@@ -158,7 +161,7 @@ impl Ldap {
 			}
 		}
 
-		ldap.unbind().await?;
+		ldap.with_timeout(self.config.connection.operation_timeout).unbind().await?;
 
 		if let Err(err) = conn.await {
 			warn!("Failed to join background task: {err}");

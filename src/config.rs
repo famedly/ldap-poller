@@ -22,7 +22,6 @@ pub struct Config {
 	/// schemes
 	pub url: Url,
 	/// Connection settings.
-	#[serde(default)]
 	pub connection: ConnectionConfig,
 	/// The username for the LDAP search user
 	pub search_user: String,
@@ -38,33 +37,31 @@ pub struct Config {
 	pub check_for_deleted_entries: bool,
 }
 
-/// Configuration for how to connect to the LDAP server. Uses defaults from
-/// [`LdapConnSettings`] for unset values.
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+/// Configuration for how to connect to the LDAP server
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ConnectionConfig {
-	/// Timeout to establish a connection in seconds. Infinite if unset.
-	#[serde(default)]
-	pub timeout: Option<u64>,
+	/// Timeout to establish a connection in seconds.
+	pub timeout: u64,
 
-	/// Use StartTLS extended operation for establishing a secure connection,
-	/// rather than TLS on a dedicated port. False if unset.
-	#[serde(default)]
-	pub starttls: Option<bool>,
+	/// LDAP operation timeout. For search per reply.
+	pub operation_timeout: Duration,
 
-	/// Disable verification of TLS certificates. False if unset.
-	#[serde(default)]
-	pub no_tls_verify: Option<bool>,
-
-	/// Optional TLS config
-	#[serde(default)]
-	pub tls: Option<TLSConfig>,
+	/// TLS config
+	pub tls: TLSConfig,
 }
 
 /// TLS Configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct TLSConfig {
-	/// TLS root certificate path
-	pub root_certificate_path: PathBuf,
+	/// Use StartTLS extended operation for establishing a secure connection,
+	/// rather than TLS on a dedicated port.
+	pub starttls: bool,
+
+	/// Disable verification of TLS certificates
+	pub no_tls_verify: bool,
+
+	/// TLS root certificates path
+	pub root_certificates_path: Option<PathBuf>,
 }
 
 /// Names of attributes to use for extracting relevant data
@@ -128,17 +125,13 @@ impl ConnectionConfig {
 	/// Create a [`LdapConnSettings`] based on this [`ConnectionConfig`]
 	pub(crate) async fn to_settings(&self) -> Result<LdapConnSettings, Error> {
 		let mut settings = LdapConnSettings::new();
-		if let Some(timeout) = self.timeout {
-			settings = settings.set_conn_timeout(Duration::from_secs(timeout));
-		}
-		if let Some(starttls) = self.starttls {
-			settings = settings.set_starttls(starttls);
-		}
-		if let Some(no_tls_verify) = self.no_tls_verify {
-			settings = settings.set_no_tls_verify(no_tls_verify);
-		}
-		if let Some(config) = &self.tls {
-			let contents = tokio::fs::read(&config.root_certificate_path).await?;
+
+		settings = settings.set_conn_timeout(Duration::from_secs(self.timeout));
+		settings = settings.set_starttls(self.tls.starttls);
+		settings = settings.set_no_tls_verify(self.tls.no_tls_verify);
+
+		if let Some(path) = &self.tls.root_certificates_path {
+			let contents = tokio::fs::read(path).await?;
 			let certs = rustls_pemfile::certs(&mut contents.as_slice())?;
 			if certs.is_empty() {
 				return Err(Error::Invalid("No certificates found".to_owned()));
@@ -177,15 +170,15 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_tls_config() -> Result<(), Box<dyn std::error::Error>> {
-		// default test
-		ConnectionConfig::default().to_settings().await?;
-
 		// working test
 		ConnectionConfig {
-			tls: Some(TLSConfig {
-				root_certificate_path: PathBuf::from("docker-env/certs/RootCA.crt"),
-			}),
-			..Default::default()
+			tls: TLSConfig {
+				root_certificates_path: Some(PathBuf::from("docker-env/certs/RootCA.crt")),
+				starttls: false,
+				no_tls_verify: false,
+			},
+			timeout: 5,
+			operation_timeout: std::time::Duration::from_secs(5),
 		}
 		.to_settings()
 		.await?;
@@ -193,8 +186,13 @@ mod tests {
 		// invalid crt test
 		assert!(matches!(
 			ConnectionConfig {
-				tls: Some(TLSConfig { root_certificate_path: PathBuf::from("src/config.rs") }),
-				..Default::default()
+				tls: TLSConfig {
+					root_certificates_path: Some(PathBuf::from("src/config.rs")),
+					starttls: false,
+					no_tls_verify: false,
+				},
+				timeout: 5,
+				operation_timeout: std::time::Duration::from_secs(5),
 			}
 			.to_settings()
 			.await

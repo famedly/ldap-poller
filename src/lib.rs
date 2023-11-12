@@ -18,9 +18,12 @@
 //! A minimal example of running the client might look like so:
 //! ```no_run
 //! # async fn run() -> Result<(), Box<dyn std::error::Error>> {
+//! use std::time::Duration;
+//!
 //! use ldap_poller::{
 //! 	config::{
 //! 		AttributeConfig, CacheMethod, Config, ConnectionConfig, Searches,
+//! 		TLSConfig,
 //! 	},
 //! 	ldap::Ldap,
 //! };
@@ -30,7 +33,15 @@
 //! // here for demonstration purposes.
 //! let config = Config {
 //! 	url: Url::parse("ldap://localhost")?,
-//! 	connection: ConnectionConfig::default(),
+//! 	connection: ConnectionConfig {
+//! 		timeout: 5,
+//! 		tls: TLSConfig {
+//! 			root_certificates_path: None,
+//! 			starttls: false,
+//! 			no_tls_verify: false,
+//! 		},
+//! 		operation_timeout: Duration::from_secs(5),
+//! 	},
 //! 	search_user: "admin".to_owned(),
 //! 	search_password: "verysecret".to_owned(),
 //! 	searches: Searches {
