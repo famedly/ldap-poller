@@ -154,12 +154,12 @@ impl ConnectionConfig {
 mod tests {
 	#![allow(clippy::unwrap_used, clippy::items_after_statements)]
 
-	use std::path::PathBuf;
+	use std::{io::ErrorKind, path::PathBuf};
 
 	use time::PrimitiveDateTime;
 
 	use super::TIME_FORMAT;
-	use crate::{config::TLSConfig, ConnectionConfig};
+	use crate::{config::TLSConfig, error, ConnectionConfig};
 
 	#[test]
 	fn test_time_config() -> Result<(), Box<dyn std::error::Error>> {
@@ -199,6 +199,24 @@ mod tests {
 			.err()
 			.unwrap(),
 			crate::error::Error::Invalid(_)
+		));
+
+		// invalid path test
+		assert!(matches!(
+			ConnectionConfig {
+				tls: TLSConfig {
+					root_certificates_path: Some(PathBuf::from("invalid_path")),
+					starttls: false,
+					no_tls_verify: false,
+				},
+				timeout: 5,
+				operation_timeout: std::time::Duration::from_secs(5),
+			}
+			.to_settings()
+			.await
+			.err()
+			.unwrap(),
+			error::Error::Io(io_err) if io_err.kind() == ErrorKind::NotFound
 		));
 
 		Ok(())
