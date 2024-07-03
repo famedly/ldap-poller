@@ -51,8 +51,13 @@
 //! 	},
 //! 	attributes: AttributeConfig {
 //! 		pid: "objectGUID".to_owned(),
-//! 		updated: "mtime".to_owned(),
-//! 		additional: vec![],
+//! 		updated: Some("mtime".to_owned()),
+//! 		additional: vec![
+//! 			"cn".to_owned(),
+//! 			"admin".to_owned(),
+//! 			"enabled".to_owned(),
+//! 		],
+//! 		attrs_to_track: vec!["enabled".to_owned()],
 //! 	},
 //! 	cache_method: CacheMethod::ModificationTime,
 //! 	check_for_deleted_entries: false,

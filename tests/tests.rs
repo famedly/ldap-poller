@@ -80,12 +80,13 @@ fn setup_ldap_poller(
 		},
 		attributes: AttributeConfig {
 			pid: "cn".to_owned(),
-			updated: "modifyTimestamp".to_owned(),
+			updated: Some("modifyTimestamp".to_owned()),
 			additional: vec![
 				"displayName".to_owned(),
 				"admin".to_owned(),
 				"employeeType".to_owned(),
 			],
+			attrs_to_track: vec!["admin".into()],
 		},
 		cache_method: CacheMethod::ModificationTime,
 		check_for_deleted_entries,
@@ -263,7 +264,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {
-			EntryStatus::Changed(new_entry, _old_entry) => {
+			EntryStatus::Changed { new: new_entry, .. } => {
 				users.push(new_entry);
 			}
 			_ => panic!("Unexpected entry status"),
@@ -280,7 +281,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {
-			EntryStatus::Changed(new_entry, _old_entry) => {
+			EntryStatus::Changed { new: new_entry, .. } => {
 				users.push(new_entry);
 			}
 			_ => panic!("Unexpected entry status"),
@@ -296,7 +297,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 
 	if let Some(entry) = receiver.recv().await {
 		match entry {
-			EntryStatus::Changed(new_entry, _old_entry) => {
+			EntryStatus::Changed { new: new_entry, .. } => {
 				users.push(new_entry);
 			}
 			_ => panic!("Unexpected entry status"),
@@ -351,7 +352,7 @@ async fn ldap_user_sync_cache_test() -> Result<(), Box<dyn Error>> {
 	assert_eq!(users.len(), 1);
 	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
 
-	let cache = ldap_poller.persist_cache().await.unwrap();
+	let cache = ldap_poller.persist_cache().await;
 	thread_handle.abort();
 
 	ldap_add_user(&mut ldap, "user02", "User2").await.unwrap();

@@ -14,7 +14,14 @@ pub trait SearchEntryExt {
 	fn bin_attr_first(&self, attr: &str) -> Option<&[u8]>;
 
 	/// Get the first value of an attribute, interpreted as a boolean.
-	fn bool_first(&self, attr: &str) -> Option<Result<bool, Error>>;
+	fn bool_first(&self, attr: &str) -> Option<Result<bool, Error>> {
+		match self.attr_first(attr) {
+			Some("TRUE") => Some(Ok(true)),
+			Some("FALSE") => Some(Ok(false)),
+			Some(_) => Some(Err(Error::Invalid(attr.to_owned()))),
+			None => None,
+		}
+	}
 }
 
 impl SearchEntryExt for SearchEntry {
@@ -32,15 +39,6 @@ impl SearchEntryExt for SearchEntry {
 			return attr.first().map(Vec::as_slice);
 		}
 		None
-	}
-
-	fn bool_first(&self, attr: &str) -> Option<Result<bool, Error>> {
-		match self.attr_first(attr) {
-			Some("TRUE") => Some(Ok(true)),
-			Some("FALSE") => Some(Ok(false)),
-			Some(_) => Some(Err(Error::Invalid(attr.to_owned()))),
-			None => None,
-		}
 	}
 }
 

@@ -71,17 +71,22 @@ pub struct AttributeConfig {
 	pub pid: String,
 	/// Name of the attribute that holds the time an object was most recently
 	/// modified
-	pub updated: String,
+	pub updated: Option<String>,
 	/// Additional attributes
 	pub additional: Vec<String>,
+	/// Attributes to track for changes
+	pub attrs_to_track: Vec<String>,
 }
 
 impl AttributeConfig {
 	/// Returns the list of LDAP object attributes the server should return.
 	#[must_use]
 	pub fn to_vec(&self) -> Vec<String> {
-		let mandatory = [self.pid.clone(), self.updated.clone()];
-		[&self.additional[..], &mandatory[..]].concat()
+		let mut mandatory = vec![self.pid.clone()];
+		if let Some(updated) = &self.updated {
+			mandatory.push(updated.clone());
+		}
+		[&self.additional[..], &mandatory[..], &self.attrs_to_track[..]].concat()
 	}
 
 	/// Returns an example AttributesConfig
@@ -89,8 +94,9 @@ impl AttributeConfig {
 	pub(crate) fn example() -> Self {
 		AttributeConfig {
 			pid: "objectGUID".to_owned(),
-			updated: "mtime".to_owned(),
+			updated: Some("mtime".to_owned()),
 			additional: vec!["admin".to_owned()],
+			attrs_to_track: vec!["enabled".to_owned()],
 		}
 	}
 }

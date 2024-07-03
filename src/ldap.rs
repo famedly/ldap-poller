@@ -37,7 +37,8 @@ pub enum EntryStatus {
 	/// The entry is new
 	New(SearchEntry),
 	/// The entry has changed
-	Changed(SearchEntry, SearchEntry),
+	#[allow(missing_docs)]
+	Changed { old: SearchEntry, new: SearchEntry },
 	/// The entry was removed
 	Removed(Vec<u8>),
 }
@@ -107,12 +108,16 @@ impl Ldap {
 			adapters.push(Box::new(PagedResults::new(page_size)));
 		}
 		let attributes = self.config.attributes.clone();
-		let filter = match (self.config.check_for_deleted_entries, last_sync_time) {
-			(false, Some(last_sync_time)) => {
+		let filter = match (
+			self.config.check_for_deleted_entries,
+			last_sync_time,
+			&self.config.attributes.updated,
+		) {
+			(false, Some(last_sync_time), Some(updated_attr)) => {
 				format!(
 					"(&{}({}>={}))",
 					self.config.searches.user_filter,
-					self.config.attributes.updated,
+					updated_attr,
 					last_sync_time
 						.format(&crate::config::TIME_FORMAT)
 						.map_err(|_| Error::Invalid("TIME_FORMAT is invalid".to_owned()))?,
@@ -143,7 +148,8 @@ impl Ldap {
 				}
 				Ok(CacheEntryStatus::Unchanged) => continue,
 				Ok(CacheEntryStatus::Changed(old)) => {
-					self.send_channel_update(EntryStatus::Changed(entry, old.into())).await;
+					self.send_channel_update(EntryStatus::Changed { old: old.into(), new: entry })
+						.await;
 				}
 				Err(err) => {
 					error!("Validating cache entry failed: {err}");
@@ -178,7 +184,7 @@ impl Ldap {
 	}
 
 	/// Persist the cache
-	pub async fn persist_cache(&self) -> Result<Cache, Error> {
-		Ok(self.cache.read().await.clone())
+	pub async fn persist_cache(&self) -> Cache {
+		self.cache.read().await.clone()
 	}
 }

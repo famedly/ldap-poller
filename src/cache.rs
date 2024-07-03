@@ -2,12 +2,9 @@
 use std::collections::{HashMap, HashSet};
 
 use ldap3::SearchEntry;
-use time::{OffsetDateTime, PrimitiveDateTime};
+use time::OffsetDateTime;
 
-use crate::{
-	config::{AttributeConfig, TIME_FORMAT},
-	entry::SearchEntryExt,
-};
+use crate::{config::AttributeConfig, entry::SearchEntryExt};
 
 /// Cache data with information about the last sync and user entries
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -78,12 +75,25 @@ impl From<SerializedSearchEntry> for SearchEntry {
 	}
 }
 
+impl SearchEntryExt for SerializedSearchEntry {
+	fn attr_first(&self, attr: &str) -> Option<&str> {
+		self.attrs.get(attr)?.first().map(String::as_str)
+	}
+
+	fn bin_attr_first(&self, attr: &str) -> Option<&[u8]> {
+		self.attrs
+			.get(attr)
+			.and_then(|attr| attr.first().map(String::as_bytes))
+			.or_else(|| self.bin_attrs.get(attr).and_then(|attr| attr.first().map(Vec::as_slice)))
+	}
+}
+
 /// Cache data entries used to check whether an entry has changed
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub enum CacheEntries {
 	/// Use the modification time attribute to check whether a user entry has
 	/// changed.
-	Modified(HashMap<Vec<u8>, (OffsetDateTime, SerializedSearchEntry)>),
+	Modified(HashMap<Vec<u8>, SerializedSearchEntry>),
 	/// Don't cache anything, forward all results unconditionally
 	None,
 }
@@ -105,7 +115,7 @@ impl CacheEntries {
 	) -> Result<CacheEntryStatus, Error> {
 		match *self {
 			CacheEntries::Modified(ref mut cache) => {
-				match has_mtime_changed(cache, entry, attributes_config) {
+				match has_any_attr_changed(cache, entry, attributes_config) {
 					Ok(status) => Ok(status),
 					Err(err) => {
 						tracing::warn!("Validating modification time failed: {err}");
@@ -119,24 +129,29 @@ impl CacheEntries {
 }
 
 /// Check whether the modification time of an entry has changed
-fn has_mtime_changed(
-	times: &mut HashMap<Vec<u8>, (OffsetDateTime, SerializedSearchEntry)>,
+fn has_any_attr_changed(
+	cache: &mut HashMap<Vec<u8>, SerializedSearchEntry>,
 	entry: &SearchEntry,
 	attributes_config: &AttributeConfig,
 ) -> Result<CacheEntryStatus, Error> {
-	let time = entry.attr_first(&attributes_config.updated).ok_or(Error::Missing)?;
 	let id = entry.bin_attr_first(&attributes_config.pid).ok_or(Error::Missing)?;
-	let time = PrimitiveDateTime::parse(time, &TIME_FORMAT)?.assume_utc();
-	match times.get_mut(id) {
-		Some((cached_time, old_entry)) if time > *cached_time => {
-			*cached_time = time;
-			let old_entry_clone = old_entry.clone();
-			*old_entry = Into::<SerializedSearchEntry>::into(entry.clone());
-			Ok(CacheEntryStatus::Changed(old_entry_clone))
+	match cache.get_mut(id) {
+		Some(old_entry) => {
+			if attributes_config
+				.attrs_to_track
+				.iter()
+				.chain(attributes_config.updated.iter())
+				.any(|attr| entry.bin_attr_first(attr) != old_entry.bin_attr_first(attr))
+			{
+				let old_entry_clone = old_entry.clone();
+				*old_entry = Into::<SerializedSearchEntry>::into(entry.clone());
+				Ok(CacheEntryStatus::Changed(old_entry_clone))
+			} else {
+				Ok(CacheEntryStatus::Unchanged)
+			}
 		}
-		Some(_) => Ok(CacheEntryStatus::Unchanged),
 		None => {
-			times.insert(id.to_owned(), (time, Into::<SerializedSearchEntry>::into(entry.clone())));
+			cache.insert(id.to_owned(), Into::<SerializedSearchEntry>::into(entry.clone()));
 			Ok(CacheEntryStatus::Missing)
 		}
 	}
@@ -165,10 +180,28 @@ mod tests {
 	use crate::{
 		cache::CacheEntryStatus,
 		config::{AttributeConfig, TIME_FORMAT},
+		entry::SearchEntryExt,
 	};
 
 	#[test]
-	fn has_mtime_changed() -> Result<(), Box<dyn std::error::Error>> {
+	fn attr_first() {
+		let entry = super::SerializedSearchEntry {
+			dn: String::from("dontcare"),
+			attrs: [(
+				String::from("name"),
+				vec![String::from("Foo Bar"), String::from("Bar McBaz")],
+			)]
+			.into_iter()
+			.collect(),
+			bin_attrs: HashMap::default(),
+		};
+		assert_eq!(entry.attr_first("naem"), None, "Undefined attributes should return None");
+		assert_eq!(entry.attr_first("name"), Some("Foo Bar"), "Should return the first value");
+		assert_ne!(entry.attr_first("name"), Some("Bar McBaz"), "Should return the correct value");
+	}
+
+	#[test]
+	fn has_any_attr_changed() -> Result<(), Box<dyn std::error::Error>> {
 		let mut cache = HashMap::new();
 
 		// Construct example values
@@ -180,19 +213,20 @@ mod tests {
 				let attributes = attributes.clone();
 				HashMap::from([
 					(attributes.pid, vec!["john_doe".to_owned()]),
-					(attributes.updated, vec![now.format(&TIME_FORMAT)?]),
+					(attributes.updated.unwrap(), vec![now.format(&TIME_FORMAT)?]),
+					("enabled".into(), vec!["yes".into()]),
 				])
 			},
 			bin_attrs: HashMap::new(),
 		};
 
 		assert_eq!(
-			super::has_mtime_changed(&mut cache, &entry, &attributes)?,
+			super::has_any_attr_changed(&mut cache, &entry, &attributes)?,
 			CacheEntryStatus::Missing,
 			"Newly inserted entry should be considered missing",
 		);
 		assert_eq!(
-			super::has_mtime_changed(&mut cache, &entry, &attributes)?,
+			super::has_any_attr_changed(&mut cache, &entry, &attributes)?,
 			CacheEntryStatus::Unchanged,
 			"Unmodified entry should not be considered changed",
 		);
@@ -200,10 +234,28 @@ mod tests {
 		let old = entry.clone();
 		// Change the modification time
 		let now = now + Duration::seconds(30);
-		entry.attrs.insert(attributes.updated.clone(), vec![now.format(&TIME_FORMAT)?]);
+		entry
+			.attrs
+			.insert(attributes.updated.as_ref().unwrap().clone(), vec![now.format(&TIME_FORMAT)?]);
 
 		assert_eq!(
-			super::has_mtime_changed(&mut cache, &entry, &attributes)?,
+			super::has_any_attr_changed(&mut cache, &entry, &attributes)?,
+			CacheEntryStatus::Changed(old.into()),
+			"Modified entry should be considered changed",
+		);
+
+		assert_eq!(
+			super::has_any_attr_changed(&mut cache, &entry, &attributes)?,
+			CacheEntryStatus::Unchanged,
+			"Unmodified entry should not be considered changed",
+		);
+
+		let old = entry.clone();
+
+		entry.attrs.insert("enabled".into(), vec!["no".into()]);
+
+		assert_eq!(
+			super::has_any_attr_changed(&mut cache, &entry, &attributes)?,
 			CacheEntryStatus::Changed(old.into()),
 			"Modified entry should be considered changed",
 		);
