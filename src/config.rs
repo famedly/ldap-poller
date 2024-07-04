@@ -204,7 +204,7 @@ mod tests {
 			.await
 			.err()
 			.unwrap(),
-			crate::error::Error::Invalid(_)
+			error::Error::Invalid(_)
 		));
 
 		// invalid path test

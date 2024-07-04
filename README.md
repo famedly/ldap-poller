@@ -76,7 +76,7 @@ while let Some(entry) = receiver.recv().await {
 
 ## Testing
 
-This library has two test modes: mock and integration tests. To run the mock tests without additional dependencies: 
+This library has two test modes: mock and integration tests. To run the mock tests without additional dependencies:
 
 ```
 cargo test
@@ -90,7 +90,7 @@ The docker compose files are in `docker-compose/`. To run the integration tests,
 ```
 cargo make start-docker-setup
 cargo test -- --ignored
-cargo make stop-docker-setup 
+cargo make stop-docker-setup
 ```
 
 
@@ -132,7 +132,7 @@ file within the repository.
 
 If you compile the open source software that we make available to develop your
 own mobile, desktop or embeddable application, and cause that application to
-connect to our servers for any purposes, you have to aggree to our Terms of
+connect to our servers for any purposes, you have to agree to our Terms of
 Service. In short, if you choose to connect to our servers, certain restrictions
 apply as follows:
 

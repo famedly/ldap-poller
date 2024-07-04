@@ -255,7 +255,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 		}
 	}
 
-	tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+	tokio::time::sleep(Duration::from_secs(3)).await;
 
 	assert_eq!(users.len(), 1);
 	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
@@ -275,7 +275,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	assert_eq!(users[0].attr_first("displayName").unwrap(), "MyName1");
 	assert_eq!(users[1].attr_first("displayName").unwrap(), "MyNameNew");
 
-	tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+	tokio::time::sleep(Duration::from_secs(1)).await;
 
 	ldap_user_add_attribute(&mut ldap, "user01", "employeeType", "FALSE").await?;
 
@@ -291,7 +291,7 @@ async fn ldap_user_sync_modification_test() -> Result<(), Box<dyn Error>> {
 	assert_eq!(users.len(), 3);
 	assert_eq!(users[2].bool_first("employeeType").unwrap().unwrap(), false);
 
-	tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+	tokio::time::sleep(Duration::from_secs(1)).await;
 
 	ldap_user_replace_attribute(&mut ldap, "user01", "employeeType", "TRUE").await?;
 
