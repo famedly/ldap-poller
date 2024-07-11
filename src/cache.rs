@@ -195,7 +195,11 @@ mod tests {
 			.collect(),
 			bin_attrs: HashMap::default(),
 		};
-		assert_eq!(entry.attr_first("naem"), None, "Undefined attributes should return None");
+		assert_eq!(
+			entry.attr_first("attribute_does_not_exist"),
+			None,
+			"Undefined attributes should return None"
+		);
 		assert_eq!(entry.attr_first("name"), Some("Foo Bar"), "Should return the first value");
 		assert_ne!(entry.attr_first("name"), Some("Bar McBaz"), "Should return the correct value");
 	}
