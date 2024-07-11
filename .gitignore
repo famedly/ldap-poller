@@ -6,4 +6,3 @@ Cargo.lock
 *.crt
 *.pem
 *.key
-!docker-env/certs/RootCA.crt

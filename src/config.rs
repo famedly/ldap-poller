@@ -158,7 +158,7 @@ impl ConnectionConfig {
 
 #[cfg(test)]
 mod tests {
-	#![allow(clippy::unwrap_used, clippy::items_after_statements)]
+	#![allow(clippy::unwrap_used, clippy::expect_used, clippy::items_after_statements)]
 
 	use std::{io::ErrorKind, path::PathBuf};
 
@@ -176,6 +176,11 @@ mod tests {
 
 	#[tokio::test]
 	async fn test_tls_config() -> Result<(), Box<dyn std::error::Error>> {
+		std::process::Command::new("sh")
+			.arg("docker-env/certs/generate_certs.sh")
+			.output()
+			.expect("failed to create tls certs");
+
 		// working test
 		ConnectionConfig {
 			tls: TLSConfig {

@@ -19,3 +19,22 @@ jobs:
       contents: read
     uses: famedly/backend-build-workflows/.github/workflows/rust-workflow.yml@main
     secrets: inherit
+  
+  integration-tests:
+    runs-on: ubuntu-latest
+    name: integration tests
+    steps:
+      - uses: actions/checkout@v3
+      - name: Update Rust
+        shell: bash
+        run: rustup update
+      - name: Install cargo-make
+        shell: bash
+        run: cargo install --no-default-features --force cargo-make
+      - name: Start docker setup
+        shell: bash
+        run: cargo make start-docker-setup
+      - name: Run integration tests
+        shell: bash
+        run: cargo test -- --ignored    
+
