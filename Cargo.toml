@@ -5,17 +5,15 @@ authors = ["Amanda Graven <a.graven@famedly.com>"]
 edition = "2021"
 
 [dependencies]
-ldap3 = { version = "0.11.1", default-features = false, features = [
-    "tls-rustls",
-] }
+ldap3 = "0.11.1"
 serde = { version = "1.0.189", features = ["derive"] }
 thiserror = "1.0.49"
 rustls = { version = "0.21.0" }
-time = { version = "0.3.30", features = ["parsing", "serde"] }
+time = { version = "0.3.30", features = ["parsing", "serde", "macros", "formatting"] }
 tokio = { version = "1.33.0", features = ["full"] }
 tracing = "0.1.39"
 url = { version = "2.4.1", features = ["serde"] }
-rustls-pemfile = { version = "1.0.3" }
+native-tls = "0.2.12"
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }

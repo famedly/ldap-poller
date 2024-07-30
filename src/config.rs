@@ -1,8 +1,8 @@
 //! Config for the LDAP client.
-use std::{path::PathBuf, sync::Arc, time::Duration};
+use std::{path::PathBuf, time::Duration};
 
 use ldap3::LdapConnSettings;
-use rustls::{Certificate, RootCertStore};
+use native_tls::{Certificate, TlsConnector};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -138,19 +138,13 @@ impl ConnectionConfig {
 
 		if let Some(path) = &self.tls.root_certificates_path {
 			let contents = tokio::fs::read(path).await?;
-			let certs = rustls_pemfile::certs(&mut contents.as_slice())?;
-			if certs.is_empty() {
-				return Err(Error::Invalid("No certificates found".to_owned()));
-			}
-			let mut store = RootCertStore::empty();
-			for cert in certs.into_iter().map(Certificate) {
-				store.add(&cert)?;
-			}
-			let client_config = rustls::ClientConfig::builder()
-				.with_safe_defaults()
-				.with_root_certificates(Arc::new(store))
-				.with_no_client_auth();
-			settings = settings.set_config(client_config.into());
+			let certs = Certificate::from_pem(contents.as_slice())
+				.map_err(|_| Error::Invalid("Could not read root certificates".to_owned()))?;
+			let connector =
+				TlsConnector::builder().add_root_certificate(certs).build().map_err(|_| {
+					Error::Invalid("Could not build TlsConnector with custom root certs".to_owned())
+				})?;
+			settings = settings.set_connector(connector);
 		}
 		Ok(settings)
 	}
