@@ -37,6 +37,8 @@
 //! 		timeout: 5,
 //! 		tls: TLSConfig {
 //! 			root_certificates_path: None,
+//! 			client_key_path: None,
+//! 			client_certificate_path: None,
 //! 			starttls: false,
 //! 			no_tls_verify: false,
 //! 		},

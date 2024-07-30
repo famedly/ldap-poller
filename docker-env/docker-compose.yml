@@ -11,6 +11,7 @@ services:
       - LDAP_TLS_KEY_FILE=certs/localhost.key
       - LDAP_TLS_CA_FILE=certs/RootCA.crt
       - LDAP_BASE=dc=example,dc=org
+      - LDAP_TLS_VERIFY_CLIENTS=try
     volumes:
       - ./certs:/certs
       - ./ldifs:/ldifs

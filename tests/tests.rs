@@ -56,6 +56,8 @@ fn setup_ldap_poller(
 		let mut c = ConnectionConfig {
 			timeout: 5,
 			tls: TLSConfig {
+				client_key_path: Some(PathBuf::from("docker-env/certs/client.key")),
+				client_certificate_path: Some(PathBuf::from("docker-env/certs/client.crt")),
 				root_certificates_path: Some(PathBuf::from("docker-env/certs/RootCA.crt")),
 				starttls: false,
 				no_tls_verify: false,
@@ -63,6 +65,8 @@ fn setup_ldap_poller(
 			operation_timeout: Duration::from_secs(5),
 		};
 		if !tls {
+			c.tls.client_certificate_path = None;
+			c.tls.client_key_path = None;
 			c.tls.root_certificates_path = None;
 		}
 		c
@@ -117,7 +121,7 @@ async fn ldap_user_sync_once_test() -> Result<(), Box<dyn Error>> {
 }
 
 async fn sync_one_test(tls: bool) -> Result<(), Box<dyn Error>> {
-	let mut ldap = ldap_connect(tls).await?;
+	let mut ldap = ldap_connect(false).await?;
 	let _ = ldap_delete_organizational_unit(&mut ldap, "users").await;
 
 	ldap_add_organizational_unit(&mut ldap, "users").await?;

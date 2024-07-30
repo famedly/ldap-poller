@@ -2,7 +2,7 @@
 use std::{path::PathBuf, time::Duration};
 
 use ldap3::LdapConnSettings;
-use native_tls::{Certificate, TlsConnector};
+use native_tls::{Certificate, Identity, TlsConnector};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -62,6 +62,12 @@ pub struct TLSConfig {
 
 	/// TLS root certificates path
 	pub root_certificates_path: Option<PathBuf>,
+
+	/// Path of the TLS client key to use for the connection
+	pub client_key_path: Option<PathBuf>,
+
+	/// Path of the TLS client certificate to use for the connection
+	pub client_certificate_path: Option<PathBuf>,
 }
 
 /// Names of attributes to use for extracting relevant data
@@ -137,13 +143,32 @@ impl ConnectionConfig {
 		settings = settings.set_no_tls_verify(self.tls.no_tls_verify);
 
 		if let Some(path) = &self.tls.root_certificates_path {
-			let contents = tokio::fs::read(path).await?;
-			let certs = Certificate::from_pem(contents.as_slice())
-				.map_err(|_| Error::Invalid("Could not read root certificates".to_owned()))?;
-			let connector =
-				TlsConnector::builder().add_root_certificate(certs).build().map_err(|_| {
-					Error::Invalid("Could not build TlsConnector with custom root certs".to_owned())
-				})?;
+			let mut connector = TlsConnector::builder();
+
+			let root_certificate =
+				Certificate::from_pem(tokio::fs::read(path).await?.as_slice())
+					.map_err(|_| Error::Invalid("Could not read root certificate".to_owned()))?;
+			connector.add_root_certificate(root_certificate);
+
+			match (&self.tls.client_key_path, &self.tls.client_certificate_path) {
+				(Some(key_path), Some(cert_path)) => {
+					let identity = Identity::from_pkcs8(
+						tokio::fs::read(cert_path).await?.as_slice(),
+						tokio::fs::read(key_path).await?.as_slice(),
+					)
+					.map_err(|_| Error::Invalid("Could not read client certificates".to_owned()))?;
+					connector.identity(identity);
+				}
+				(None, None) => {}
+				_ => Err(Error::Invalid(
+					"Both a client certificate and key file in PKCS8 format must be specified"
+						.to_owned(),
+				))?,
+			}
+
+			let connector = connector.build().map_err(|_| {
+				Error::Invalid("Could not build TlsConnector with custom root certs".to_owned())
+			})?;
 			settings = settings.set_connector(connector);
 		}
 		Ok(settings)
@@ -178,6 +203,8 @@ mod tests {
 		// working test
 		ConnectionConfig {
 			tls: TLSConfig {
+				client_key_path: Some(PathBuf::from("docker-env/certs/client.key")),
+				client_certificate_path: Some(PathBuf::from("docker-env/certs/client.crt")),
 				root_certificates_path: Some(PathBuf::from("docker-env/certs/RootCA.crt")),
 				starttls: false,
 				no_tls_verify: false,
@@ -192,6 +219,8 @@ mod tests {
 		assert!(matches!(
 			ConnectionConfig {
 				tls: TLSConfig {
+					client_key_path: Some(PathBuf::from("docker-env/certs/client.key")),
+					client_certificate_path: Some(PathBuf::from("docker-env/certs/client.crt")),
 					root_certificates_path: Some(PathBuf::from("src/config.rs")),
 					starttls: false,
 					no_tls_verify: false,
@@ -210,6 +239,8 @@ mod tests {
 		assert!(matches!(
 			ConnectionConfig {
 				tls: TLSConfig {
+					client_key_path: Some(PathBuf::from("invalid_path")),
+					client_certificate_path: Some(PathBuf::from("invalid_path")),
 					root_certificates_path: Some(PathBuf::from("invalid_path")),
 					starttls: false,
 					no_tls_verify: false,
