@@ -91,6 +91,7 @@ fn setup_ldap_poller(
 				"employeeType".to_owned(),
 			],
 			attrs_to_track: vec!["admin".into()],
+			filter_attributes: true,
 		},
 		cache_method: CacheMethod::ModificationTime,
 		check_for_deleted_entries,

@@ -82,17 +82,23 @@ pub struct AttributeConfig {
 	pub additional: Vec<String>,
 	/// Attributes to track for changes
 	pub attrs_to_track: Vec<String>,
+	/// Whether to explicitly filter for attributes in the ldap search request
+	pub filter_attributes: bool,
 }
 
 impl AttributeConfig {
 	/// Returns the list of LDAP object attributes the server should return.
 	#[must_use]
-	pub fn to_vec(&self) -> Vec<String> {
-		let mut mandatory = vec![self.pid.clone()];
-		if let Some(updated) = &self.updated {
-			mandatory.push(updated.clone());
+	pub fn get_attr_filter(&self) -> Vec<String> {
+		if self.filter_attributes {
+			let mut mandatory = vec![self.pid.clone()];
+			if let Some(updated) = &self.updated {
+				mandatory.push(updated.clone());
+			}
+			[&self.additional[..], &mandatory[..], &self.attrs_to_track[..]].concat()
+		} else {
+			vec!["*".to_owned()]
 		}
-		[&self.additional[..], &mandatory[..], &self.attrs_to_track[..]].concat()
 	}
 
 	/// Returns an example AttributesConfig
@@ -103,6 +109,7 @@ impl AttributeConfig {
 			updated: Some("mtime".to_owned()),
 			additional: vec!["admin".to_owned()],
 			attrs_to_track: vec!["enabled".to_owned()],
+			filter_attributes: true,
 		}
 	}
 }
@@ -184,11 +191,25 @@ mod tests {
 	use time::PrimitiveDateTime;
 
 	use super::TIME_FORMAT;
-	use crate::{config::TLSConfig, error, ConnectionConfig};
+	use crate::{config::TLSConfig, error, AttributeConfig, ConnectionConfig};
 
 	#[test]
 	fn test_time_config() -> Result<(), Box<dyn std::error::Error>> {
 		PrimitiveDateTime::parse("20130516200520Z", &TIME_FORMAT)?;
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_attr_filter() -> Result<(), Box<dyn std::error::Error>> {
+		let config = AttributeConfig::example();
+
+		assert_eq!(config.get_attr_filter(), ["admin", "objectGUID", "mtime", "enabled"]);
+
+		let mut config = AttributeConfig::example();
+		config.filter_attributes = false;
+
+		assert_eq!(config.get_attr_filter(), ["*"]);
 
 		Ok(())
 	}

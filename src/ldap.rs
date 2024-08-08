@@ -133,7 +133,7 @@ impl Ldap {
 				&self.config.searches.user_base,
 				Scope::Subtree,
 				&filter,
-				attributes.to_vec(),
+				attributes.get_attr_filter(),
 			)
 			.await?;
 

@@ -59,6 +59,7 @@
 //! 			"admin".to_owned(),
 //! 			"enabled".to_owned(),
 //! 		],
+//! 		filter_attributes: true,
 //! 		attrs_to_track: vec!["enabled".to_owned()],
 //! 	},
 //! 	cache_method: CacheMethod::ModificationTime,
