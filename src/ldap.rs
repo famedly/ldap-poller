@@ -100,7 +100,8 @@ impl Ldap {
 
 		ldap.with_timeout(self.config.connection.operation_timeout)
 			.simple_bind(&self.config.search_user, &self.config.search_password)
-			.await?;
+			.await?
+			.success()?;
 
 		// Prepare search parameters
 		let mut adapters: Vec<Box<dyn Adapter<_, _>>> = vec![Box::new(EntriesOnly::new())];
