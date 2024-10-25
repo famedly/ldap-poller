@@ -17,14 +17,14 @@ jobs:
       issues: write
       pull-requests: write
       contents: read
-    uses: famedly/backend-build-workflows/.github/workflows/rust-workflow.yml@main
+    uses: famedly/backend-build-workflows/.github/workflows/rust-workflow.yml@v1
     secrets: inherit
   
   integration-tests:
     runs-on: ubuntu-latest
     name: integration tests
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Update Rust
         shell: bash
         run: rustup update
